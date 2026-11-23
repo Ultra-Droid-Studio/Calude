@@ -1,0 +1,5 @@
+/* NEXUS VR WEB
+   Bağımlılıklar Three.js ve MediaPipe Hand Landmarker canlı el takibi için kullanılır; el görünümü hafif eklem noktalarıyla çizilir.
+   Bölümler: Depolama/Ayarlar · Tanı · Performans · Renderer/Kamera/Sahne · Çizim · Pencere yöneticisi · Tarayıcı · Uygulamalar · Dock · Klavye · Giriş · WebXR · El takibi · App */
+(function(){
+  'use strict';

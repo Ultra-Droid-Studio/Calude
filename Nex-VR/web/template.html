@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Nex VR</title>
+@@STYLE@@
+
+@@GUARD@@
+
+</head>
+<body>
+<video id="pass" playsinline muted autoplay></video><video id="pass2" playsinline muted autoplay></video>
+<canvas id="c" aria-label="3B sahne. Düğmeler arasında gezinmek için Tab, seçmek için Enter kullanın." role="application"></canvas>
+<div id="gaze-ui" aria-hidden="true"><div id="gaze-left" class="gaze-dot"><i class="gaze-ring"></i></div><div id="gaze-right" class="gaze-dot"><i class="gaze-ring"></i></div></div>
+<input type="file" id="wpf" accept="image/*" hidden>
+<div id="load" role="status">
+  <h1>NEXUS<span>VR</span></h1>
+  <p style="color:var(--mu);margin:0">Tarayıcı içinde çalışan uzamsal masaüstü</p>
+  <div id="bar"><i></i></div><div id="stage">Başlıyor…</div>
+  <div id="stat" class="glass"></div>
+  <button id="start" disabled>Başlat</button>
+</div>
+<div id="intro" role="dialog" aria-label="Hoş geldiniz"><div id="ishake"><canvas id="idust"></canvas><h1 id="ititle"></h1><p id="isub">En iyi VR platformu</p><button id="istart" type="button" disabled>Başlayalım</button></div></div>
+<div id="toast" class="glass" role="alert"></div>
+<div id="hv" class="glass"><video id="hvid" playsinline muted></video><div id="hstat" style="font-size:11px;line-height:1.3;color:var(--mu);padding:4px 2px;word-break:break-word"></div><button id="hswitch" type="button">Ön kameraya geç</button><button id="hstop" type="button">Kamerayı kapat</button></div>
+
+<input type="file" id="cinf" accept="video/*" hidden>
+<input type="file" id="waf" accept=".html,.htm,text/html" hidden>
+<div id="hb"></div>
+<div id="svd"></div>
+<canvas id="hd"></canvas>
+<div id="sr" class="sr" aria-live="polite"></div>
+
+<script src="gorilla-phys.js"></script>
+<script src="gorilla-art.js"></script>
+<script src="gorilla.js"></script>
+<div id="err" role="alertdialog"><div class="glass"><h2 id="errT">Hata</h2><p id="errB"></p><p id="errH" style="color:var(--mu)"></p><button onclick="location.reload()">Yeniden dene</button></div></div>
+
+@@MAIN@@
+</body>
+</html>
