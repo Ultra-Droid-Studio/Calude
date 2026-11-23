@@ -397,8 +397,8 @@ public class MainActivity extends Activity implements SensorEventListener {
         }
     }
 
-    /** Stage 74: alt WebView'in son onResume/onPause durumu (View etiketi; kaynak kimliği gerektirmeyen anahtar). */
-    static final int R_TAG_RESUMED = 0x7f0e7401;
+    /** Stage 74: alt WebView'in son onResume/onPause durumu (yalnızca UI iş parçacığında kullanılır). */
+    final java.util.WeakHashMap<WebView, Boolean> resumedState = new java.util.WeakHashMap<>();
 
     /* Stage 74 — baş takibi (sensör) yolu: eskiden her olayda iki yeni float[9] ayrılır ve her olay için ayrı bir
        runOnUiThread + evaluateJavascript kuyruğa girerdi. UI iş parçacığı bir an meşgul olursa eski yön kareleri
@@ -411,7 +411,9 @@ public class MainActivity extends Activity implements SensorEventListener {
     final Runnable sFlush = () -> {
         sQueued.set(false);
         String js = sLatest.getAndSet(null);
-        if (js != null && web != null && nativeGyroActive) web.evaluateJavascript(js, null);
+        // alanlar sınıfta daha aşağıda bildirildiği için nitelikli erişim (aksi hâlde "illegal forward reference")
+        final WebView w = MainActivity.this.web;
+        if (js != null && w != null && MainActivity.this.nativeGyroActive) w.evaluateJavascript(js, null);
     };
 
     void sensorPost(String js) {
@@ -1557,9 +1559,9 @@ public class MainActivity extends Activity implements SensorEventListener {
                     v.setClipBounds(new Rect(left, top, right, bottom));
                 int vis = visible && right > left && bottom > top ? View.VISIBLE : View.INVISIBLE;
                 if (v.getVisibility() != vis) v.setVisibility(vis);
-                Object was = v.getTag(R_TAG_RESUMED);
-                if (!(was instanceof Boolean) || (Boolean) was != visible) {
-                    v.setTag(R_TAG_RESUMED, visible);
+                Boolean was = resumedState.get(v);
+                if (was == null || was != visible) {
+                    resumedState.put(v, visible);
                     if (visible) v.onResume(); else v.onPause();
                 }
                 if (!visible) {
