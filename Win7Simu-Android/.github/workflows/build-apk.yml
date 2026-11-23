@@ -1,0 +1,70 @@
+name: Build APK
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Kodu çek
+        uses: actions/checkout@v4
+
+      - name: Zip varsa aç, proje klasörünü bul
+        id: find
+        shell: bash
+        run: |
+          set -eu
+          i=0
+          while IFS= read -r -d '' z; do
+            i=$((i+1))
+            mkdir -p "_unzipped/$i"
+            unzip -o -q "$z" -d "_unzipped/$i" || true
+          done < <(find . -type f -iname '*.zip' -not -path './.git/*' -not -path './_unzipped/*' -print0)
+          SETTINGS="$(find . -type f \( -name settings.gradle -o -name settings.gradle.kts \) -not -path './.git/*' -print -quit)"
+          if [ -z "$SETTINGS" ]; then
+            echo "::error::settings.gradle bulunamadı"
+            find . -maxdepth 3 -not -path './.git/*'
+            exit 1
+          fi
+          DIR="$(dirname "$SETTINGS")"
+          echo "Proje klasörü: $DIR"
+          echo "dir=$DIR" >> "$GITHUB_OUTPUT"
+
+      - name: JDK 17 kur
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK'yı hazırla (runner'da hazır gelir)
+        shell: bash
+        run: |
+          export ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          export PATH="$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools"
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          ls "$ANDROID_HOME/platforms" || true
+          (yes | sdkmanager --licenses > /dev/null 2>&1) || true
+          (sdkmanager "platforms;android-34" "build-tools;34.0.0" > /dev/null 2>&1) || true
+          echo "sdk.dir=$ANDROID_HOME" > "${{ steps.find.outputs.dir }}/local.properties"
+
+      - name: Gradle kur (8.4)
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.4
+
+      - name: Debug APK derle
+        working-directory: ${{ steps.find.outputs.dir }}
+        run: gradle assembleDebug --stacktrace --no-daemon
+
+      - name: APK'yı yükle
+        uses: actions/upload-artifact@v4
+        with:
+          name: UltraDroid-debug-apk
+          path: ${{ steps.find.outputs.dir }}/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
