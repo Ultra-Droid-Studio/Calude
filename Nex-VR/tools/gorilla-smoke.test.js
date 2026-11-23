@@ -44,7 +44,7 @@ const N = global.NEXUS = {
 };
 N.Scene.scene.fog = { near: 12, far: 48, color: { set() { }, clone() { return { c: 1 }; }, copy() { } } };
 N.Cam.rig.position.set(0, 1.6, 0);
-require(A + 'gorilla-phys.js'); require(A + 'gorilla-art.js'); require(A + 'gorilla.js');
+require(A + 'gorilla-phys.js'); require(A + 'gorilla-art.js'); require(A + 'gorilla-npc.js'); require(A + 'gorilla-audio.js'); require(A + 'gorilla.js');   // Stage 74: NPC + ses modülleri de yüklü
 const G = window.Gorilla;
 const lm = (cx, cy, size, fist) => { // 21 landmark: bilek (0), orta eklem (9), uç noktalar (8,12,16,20)
   const q = Array.from({ length: 21 }, () => ({ x: cx, y: cy })); q[0] = { x: cx, y: cy + size / 2 }; q[9] = { x: cx, y: cy - size / 2 };

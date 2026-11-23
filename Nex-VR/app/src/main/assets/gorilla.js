@@ -8,6 +8,8 @@
   var GAME_NAME = 'NEXUS VR: GORILLA RUN';
   var SAVE_KEY = 'nexus.gorilla.v1';
   var P = window.GorillaPhys, ART = window.GorillaArt;
+  /* Stage 74: isteğe bağlı modüller (yoksa oyun eskisi gibi çalışır) */
+  var NPCS = window.GorillaNPC, AUD = window.GorillaAudio;
 
   /* ---------- SaveSystem: bozuk/eksik kayıt varsayılana döner ---------- */
   var FURS = [0x2a2a30, 0xf06aa8, 0x2cc0f0, 0x3a46e8, 0xe83a26, 0xb44ed8];
@@ -89,6 +91,7 @@
       this.bindLifecycle();
       this.hookXR(this.xr);
       try { if (N.Hand) { N.Hand.uiOwner = -1; N.Hand.lookOwner = -1; } } catch (e) { }
+      if (AUD) try { AUD.resume(); } catch (e) { }
       this.setState(this.autoPlay() ? 'play' : 'menu');
       if (this.autoPlay() && !this.xr && Save.d.cam) this.ensureCamera(false);   // telefon VR: menü yok, kamera eli hemen
       S.dirty = true;
@@ -187,13 +190,23 @@
       g.add(new T.HemisphereLight(0xdcecff, 0x5b6638, 0.95));
       var sun = new T.DirectionalLight(0xfff0d2, 0.8); sun.position.set(-10, 30, 14); g.add(sun);
 
-      this.world = ART.buildWorld(T, map, { quality: this.q });
+      var aniso = 1; try { aniso = N.Renderer && N.Renderer.r && N.Renderer.r.capabilities ? N.Renderer.r.capabilities.getMaxAnisotropy() : 1; } catch (e) { }
+      this.world = ART.buildWorld(T, map, { quality: this.q, aniso: aniso });
       g.add(this.world.group); this.world.group.visible = true;
       var skyTex = this._ski = N.Scene.grad([[0, '#3f8fe8'], [0.5, '#a9d4fa'], [1, '#e6f3ff']], 8, 128);
       this.sky = new T.Mesh(new T.SphereGeometry(90, 12, 8), new T.MeshBasicMaterial({ map: skyTex, side: T.BackSide, fog: false, depthWrite: false }));
       this.sky.renderOrder = -1;
       g.add(this.sky);
       this.makeAvatar();
+      // Stage 74: dolaşan NPC goriller (mantık: gorilla-npc.js; uzak/görüş dışı olanlar seyrek güncellenir)
+      if (NPCS) {
+        try {
+          this.npc = new NPCS.Manager(this.sim.world, map, { count: this.q === 0 ? 4 : 6, seed: 99 });
+          this.npcView = NPCS.makeView(T, ART, this.npc, this.world.ft2, this.q);
+          g.add(this.npcView.group);
+        } catch (e) { this.npc = null; this.npcView = null; }
+      }
+      if (AUD) AUD.init(!(N.Hand && N.Hand.lite));   // düşük seviyede HRTF yerine ucuz stereo kaydırma
       N.Scene.scene.add(g);
     },
     makeAvatar: function () {
@@ -211,7 +224,10 @@
         if (this.player) try { this.player.dispose(); } catch (e) { }
         if (this._ski) try { this._ski.dispose(); } catch (e) { }
         if (this.sky) { try { this.sky.geometry.dispose(); this.sky.material.dispose(); } catch (e) { } }
+        if (this.npcView) try { this.npcView.dispose(); } catch (e) { }
       }
+      if (AUD) try { AUD.suspend(); } catch (e) { }
+      this.npc = null; this.npcView = null; this._touch = null;
       this.g = null; this.sim = null; this.world = null; this.player = null; this.sky = null; this._ski = null; this.furTex = null; this.map = null;
     },
 
@@ -250,8 +266,10 @@
         if (!(sz > 0.012)) return;
         var tip = 0, ids = [8, 12, 16, 20];
         for (var k = 0; k < 4; k++) tip += Math.hypot((q[ids[k]].x - w.x) * 1.333, q[ids[k]].y - w.y);
-        var cx = (w.x + m.x) / 2, cy = (w.y + m.y) / 2;
-        list.push({ id: s.id, sx: Hd.mirror ? 1 - cx : cx, sy: cy, sz: sz, fist: tip / 4 / sz });
+        var cx = (w.x + m.x) / 2, cy = (w.y + m.y) / 2, c4 = -1;
+        // Stage 74: parmak bükülmeleri (native C++ ya da aynı formülle JS) → yumruk algısı parmak uzaklığından daha kararlı
+        try { var F = N.HandFeat, fs = F && F.of(s, 4 / 3); if (fs && fs.kv) c4 = (fs.kv[3] + fs.kv[4] + fs.kv[5] + fs.kv[6]) / 4; } catch (e) { c4 = -1; }
+        list.push({ id: s.id, sx: Hd.mirror ? 1 - cx : cx, sy: cy, sz: sz, fist: tip / 4 / sz, c4: c4 });
       });
       var out = [null, null];
       if (!list.length) return out;
@@ -270,7 +288,8 @@
         var L = list[i];
         if (!this.camBase) this.camBase = L.sz; else this.camBase += (L.sz - this.camBase) * Math.min(1, dt / 6);
         var gripOn = this.camGrip[L.side];
-        gripOn = gripOn ? L.fist < 1.85 : L.fist < 1.5;       // histerezis: yumruk = tut
+        if (L.c4 >= 0) gripOn = gripOn ? L.c4 > 0.42 : L.c4 > 0.58;   // histerezis: parmaklar büküldü = tut
+        else gripOn = gripOn ? L.fist < 1.85 : L.fist < 1.5;       // yedek: parmak ucu uzaklığı
         this.camGrip[L.side] = gripOn;
         var ln = Math.max(-0.7, Math.min(0.7, Math.log(L.sz / this.camBase)));
         out[L.side] = [true, (L.sx - 0.5) * 1.7 * sc, 0.35 - L.sy * 1.3 * sc, -0.35 - ln * 1.0, gripOn];
@@ -339,11 +358,67 @@
           sim.setHand(i, a[0], a[1], a[2], a[3], a[4]);
         }
         if (this.jumpReq) { this.jumpReq = false; if (Save.d.assist) sim.jump(); }
+        var Pf = N.Prof, p0 = Pf ? Pf.now() : 0;
         sim.step(dt);
+        if (this.npc) this.npc.collidePlayer(sim.body, sim.vel, sim.cfg.bodyR);
+        if (Pf) Pf.add(Pf.PHYS, p0);
+        this.physMs = Pf ? Pf.now() - p0 : 0;
         if (sim.respawns !== this.resp) { this.resp = sim.respawns; if (N.Diag) N.Diag.toast('Başlangıca döndün', null, 1800); }
       }
       this.sync();
+      this.npcTick(dt);
       this.hud(dt);
+    },
+
+    /* Stage 74: NPC'ler (oyun duraklatılmışken de yuvalarında dolaşır) + konumsal ses */
+    npcTick: function (dt) {
+      var N = this.N, Pf = N.Prof, p0 = Pf ? Pf.now() : 0, sim = this.sim, cam = N.Cam.cam;
+      var hv = this._hv, prev = this._hp || (this._hp = [{ x: 0, y: 0, z: 0, ok: false }, { x: 0, y: 0, z: 0, ok: false }]);
+      var hands = this._hl || (this._hl = [{}, {}]);
+      for (var i = 0; i < 2; i++) {
+        var o = hv && hv[i], H = hands[i], pv = prev[i];
+        H.valid = !!(o && o.valid && this.st === 'play');
+        if (H.valid) {
+          H.x = o.x; H.y = o.y; H.z = o.z;
+          H.vx = pv.ok ? (o.x - pv.x) / Math.max(dt, 1e-3) : 0; H.vy = pv.ok ? (o.y - pv.y) / Math.max(dt, 1e-3) : 0; H.vz = pv.ok ? (o.z - pv.z) / Math.max(dt, 1e-3) : 0;
+          pv.x = o.x; pv.y = o.y; pv.z = o.z; pv.ok = true;
+        } else pv.ok = false;
+      }
+      if (!this.npc && !(AUD && AUD.ctx)) return;
+      var yw = this.headYaw || 0, fx = -Math.sin(yw), fz = -Math.cos(yw), b = sim.body;   // bakış yönü (yatay)
+      if (this.npc) {
+        var Pl = this._pl || (this._pl = { x: 0, y: 0, z: 0, fx: 0, fz: -1, hands: hands });
+        Pl.x = b.x; Pl.y = b.y; Pl.z = b.z; Pl.fx = fx; Pl.fz = fz;
+        this.npc.update(dt, Pl);
+        if (this.npcView) this.npcView.sync(this.time);
+      }
+      if (Pf) Pf.add(Pf.NPC, p0);
+      this.npcMs = Pf ? Pf.now() - p0 : 0;
+      if (!AUD || !AUD.ctx) return;
+      var wp = this._wp || (this._wp = new THREE.Vector3()); if (cam.getWorldPosition) cam.getWorldPosition(wp); else wp.set(b.x, b.y + 0.25, b.z);
+      AUD.listener(wp.x, wp.y, wp.z, fx, 0, fz);
+      if (this.npc) for (var k = 0; k < this.npc.list.length; k++) {
+        var n = this.npc.list[k];
+        while (n.events.length) {
+          var ev = n.events.shift();
+          if (ev === 'see' || ev === 'hoot') AUD.play('hoot', n.x, 1.1, n.z, 0.8);
+          else if (ev === 'tag') { AUD.play('beat', n.x, 0.8, n.z, 1); AUD.play('hoot', n.x, 1.1, n.z, 1); }
+        }
+      }
+      // el temas sesleri: yeni temas başladığında, yaklaşma hızına göre şiddet
+      var T = this._touch || (this._touch = [0, 0]);
+      for (i = 0; i < 2; i++) {
+        var SH = sim.hands[i];
+        if ((SH.touches || 0) !== T[i]) { T[i] = SH.touches || 0; if (SH.touchV > 0.4) AUD.play('tap', SH.pos.x, SH.pos.y, SH.pos.z, Math.min(1, SH.touchV / 4), SH.touchMat); }
+      }
+      if (this.map) AUD.tick(dt, this.map.trees);
+    },
+    /* Performans monitörü satırı */
+    stats: function () {
+      var n = this.npc, s = n ? n.stats : null, cnt = {};
+      if (n) n.list.forEach(function (x) { var k = NPCS.STN[x.st]; cnt[k] = (cnt[k] || 0) + 1; });
+      return 'Goril: fizik ' + (this.physMs || 0).toFixed(2) + ' ms (adım ' + (this.sim ? this.sim.lastStepCount : 0) + ')  NPC ' + (this.npcMs || 0).toFixed(2) + ' ms' +
+        (s ? ' güncellenen ' + s.updated + '/' + n.list.length + '  ' + Object.keys(cnt).map(function (k) { return k + ' ' + cnt[k]; }).join(', ') : '');
     },
 
     onXRChange: function (xr) {

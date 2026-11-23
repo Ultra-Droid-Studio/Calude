@@ -192,3 +192,4 @@ const overlap=(a,b)=>a.x<b.x+b.w&&b.x<a.x+a.w&&a.y<b.y+b.h&&b.y<a.y+a.h;
   ok(bs3.every(b=>inside(b,1024,610)),'sayfa görünümü pencere içinde');
 }
 console.log('browser.test.js: '+pass+' kontrol geçti');
+process.exit(0); /* Stage 74: test edilen kodun kurduğu zamanlayıcılar Node'u açık tutuyordu (CI'da zaman aşımı) */

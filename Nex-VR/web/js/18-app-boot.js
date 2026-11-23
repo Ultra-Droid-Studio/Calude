@@ -126,6 +126,7 @@
       // Android WebView bazen ilk çizimi sonraki kareye bırakabiliyor; sahneyi zorla yenile.
       Renderer.resize();
       Scene.dirty=true;
+      Quality.init();Prof.initGpu(Renderer.r);PerfHud.sync();
       try{Renderer.r.render(Scene.scene,Cam.cam)}catch(renderError){console.error('İlk VR çizimi başarısız',renderError)}
       Renderer.r.setAnimationLoop(t=>this.frame(t));
       setInterval(()=>{
@@ -147,21 +148,29 @@
       this.lastT=t;
       const dt=Math.min(.1,(t-this.last)/1000||.016);
       this.last=t;
+      /* Stage 74: her bölümün CPU süresi ayrı ölçülür (Prof; monitör: Ayarlar → Performans monitörü) */
+      Prof.begin(t);
       Perf.tick();
+      let p0=Prof.now();
       Input.tick(dt);
+      Prof.add(Prof.INPUT,p0);p0=Prof.now();
       Hand.tick(t);
       HMenu.tick();
+      Prof.add(Prof.HAND,p0);p0=Prof.now();
       Cinema.tick();
       Game.tick();
       Planets.tick();
-      if(window.Gorilla)Gorilla.tick(dt);
+      if(window.Gorilla)Gorilla.tick(dt);   /* fizik ve NPC süreleri Gorilla içinde ayrıca PHYS/NPC'ye yazılır */
+      Prof.add(Prof.GAME,p0);p0=Prof.now();
       W7Desk.sync();
       Cam.update(dt);
       WM.tick(performance.now());
       if(WM.need){
         WM.need=false;
-        WM.panels.forEach(p=>p.visible&&WM.paint(p))
+        for(const p of WM.panels)if(p.visible)WM.paint(p)
       }
+      Prof.add(Prof.UI,p0);
+      PerfHud.tick(t);
       const q=Cam.cam.quaternion,z=Cam.cam.position.z,L=this.lq,ch=q.x!==L[0]||q.y!==L[1]||q.z!==L[2]||q.w!==L[3]||z!==L[4];
       if(ch){
         L[0]=q.x;
@@ -170,12 +179,17 @@
         L[3]=q.w;
         L[4]=z
       }
-      if(!(XR.session||ch||Scene.dirty))return;
+      if(!(XR.session||ch||Scene.dirty)){Prof.end();return}
       Scene.dirty=false;
+      p0=Prof.now();
       BF.update();
+      const G=Prof.gpu;if(G)G.start();
       if(Stereo.on&&!XR.session)Stereo.render(Renderer.r,Scene.scene,Cam.cam);
-      else Renderer.r.render(Scene.scene,Cam.cam)
+      else Renderer.r.render(Scene.scene,Cam.cam);
+      if(G)G.stop();
+      Prof.add(Prof.RENDER,p0);
+      Prof.end()
     }
   };
-  window.NEXUS={App,Scene,Renderer,Cam,XR,Stereo,Input,WM,BR,Hand,Settings,Storage,Perf,Diag,Game,Planets,Cinema,Launcher};
+  window.NEXUS={App,Scene,Renderer,Cam,XR,Stereo,Input,WM,BR,Hand,Settings,Storage,Perf,Diag,Game,Planets,Cinema,Launcher,Prof,Quality,PerfHud,HandFeat,HandContour,Pass,NHand};
   App.boot().catch(e=>Diag.fail('Başlatma hatası','Beklenmeyen bir hata oluştu.','Sayfayı yenile. ('+(e&&e.name)+')'));

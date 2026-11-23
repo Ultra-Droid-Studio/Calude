@@ -533,13 +533,17 @@
         T2('saver','Düşük güç modu','Kare hızını sınırlar');
         T2('shz','Android uygulamaları VR penceresinde','Shizuku gerekir; kapalıyken normal ekranda açılır');
         T2('fps','FPS sayacı');
-        T2('hdraw','El çizimi','Elin ekranda görünmesi',on=>{if(!on)try{Hand.clr()}catch(e){}})
+        T2('hdraw','El çizimi','Elin ekranda görünmesi',on=>{if(!on)try{Hand.clr()}catch(e){}});
+        T2('pdbg','Performans monitörü','FPS, CPU/GPU süreleri, el gecikmesi, güven, RAM, darboğaz')
       }else if(pg==='calib'){
         w.appendChild(this.row('Bakış yönünü sıfırla',this.btn('Sıfırla',()=>{try{Cam.reset()}catch(e){}this.toast('Bakış yönü sıfırlandı','var(--ok)')}),'Ön tarafı şu an baktığın yön yap'));
         w.appendChild(this.row('Hareket sensörü',this.sw(!!Cam.gyro,()=>{const p=Cam.gyro?Cam.disableGyro():Cam.enableGyro();Promise.resolve(p).then(()=>this.render(),()=>this.render());this.render()},'Hareket sensörü'),'Kafa dönüşünü telefon sensöründen al'));
         w.appendChild(this.row('El takibi',this.sw(!!Hand.on,()=>this.toggleHand(),'El takibi')));
         w.appendChild(this.row('Kamera',this.stp(v.hcam==='user'?'Ön':'Arka',()=>this.camFlip(),()=>this.camFlip(),'Kamera')));
         w.appendChild(this.row('Çimdik hassasiyeti',this.stp((v.hclk||3)+' / 5',()=>this.num('hclk',-1,1,5,1),()=>this.num('hclk',1,1,5,1),'Çimdik hassasiyeti')));
+        {const HV=['kontur','ikisi','kumanda'],HVN=['Parmak konturu','Kontur + kumanda','Kumanda'],hi=Math.max(0,HV.indexOf(Hand.view()));
+          const hv=k=>{this.set('hview',HV[k]);try{Hand.hide3D();Hand.draw()}catch(e){}this.render()};
+          w.appendChild(this.row('El görünümü',this.stp(HVN[hi],()=>hv((hi+2)%3),()=>hv((hi+1)%3),'El görünümü'),'İçi boş siyah parmak konturları ya da kumanda modeli'))}
         w.appendChild(this.row('El yumuşatma',this.stp((v.hsm||3)+' / 5',()=>{this.num('hsm',-1,1,5,1);if(Hand.on)try{Hand.initF()}catch(e){}},()=>{this.num('hsm',1,1,5,1);if(Hand.on)try{Hand.initF()}catch(e){}},'El yumuşatma')));
         const t=this.h('div','tst');t.id='lhs';t.append(this.h('i'),this.h('span',null,'Çimdik testi: önce el takibini aç'));
         w.appendChild(this.row('Canlı test',t))

@@ -107,10 +107,11 @@
         if(p){this.pend=null;clearTimeout(p.to);if(a[1]==='ready')p.res(a[2]||'');else p.rej(new Error(a.slice(2).join('|')||'native kamera hatası'))}
         else if(a[1]==='err'&&Hand.on&&Hand.native)Hand.nativeFailed(a.slice(2).join('|'))
       }else if(a[1]==='fps'){this.camFps=+a[2]||0;this.camSize=a[3]||''}
+      else if(a[1]==='res'){this.camSize=a[2]||this.camSize;try{Diag.toast('El takibi çözünürlüğü '+a[2]+' (çıkarım '+a[3]+' ms)','var(--warn)',2500)}catch(e){}}
     },
     opts(w){
       const l=!!Hand.lite;
-      return {fac:Settings.v.hcam||'environment',prev:w.prev,hand:w.hand,hands:Settings.v.hone?1:2,q:clamp(Settings.v.hcq|0,0,2),lite:l,det:l?.45:.42,pres:l?.45:.42,trk:l?.4:.4}
+      return {fac:Settings.v.hcam||'environment',prev:w.prev,hand:w.hand,hands:Settings.v.hone?1:2,q:clamp(Settings.v.hcq|0,0,2),lite:l,det:l?.45:.42,pres:l?.45:.42,trk:l?.4:.4,nf:Settings.v.hnf!==false}
     },
     send(o){
       return new Promise((res,rej)=>{
@@ -348,13 +349,13 @@
     k.f.copy(k.t).sub(k.p).normalize();
     k.q.setFromUnitVectors(k.zb,k.f);
     k.r.setFromAxisAngle(k.zb,o.right?-.25:.25);k.q.multiply(k.r);
-    c.g.position.copy(k.p);c.g.quaternion.copy(k.q);c.g.scale.set(o.right?sc:-sc,sc,sc);c.g.visible=true;c.vis=true;
+    c.g.position.copy(k.p);c.g.quaternion.copy(k.q);c.g.scale.set(o.right?sc:-sc,sc,sc);c.g.visible=o.body!==false;c.vis=true;
     if(c.pin!==o.pinch){
       c.pin=o.pinch;c.trig.position.z=o.pinch?-.011:-.016;
       c.trigMat.emissive.setHex(o.pinch?0x19d3c5:0x2a2c31);c.dotMat.color.setHex(o.pinch?0x19d3c5:0xffffff)
     }
     if(o.cursor){
-      k.d.copy(k.f).multiplyScalar(.07*sc).add(k.p);            /* ışının çıktığı uç */
+      k.d.copy(k.f).multiplyScalar(o.body===false?0:.07*sc).add(k.p);            /* ışının çıktığı uç */
       c.ray.position.copy(k.d);
       k.f.copy(k.t).sub(k.d);const L=k.f.length()||1;k.f.multiplyScalar(1/L);
       c.ray.scale.z=L;c.ray.quaternion.setFromUnitVectors(k.zf,k.f);c.ray.visible=true;
@@ -384,6 +385,7 @@
     hide3D(){
       let ch=false;
       for(const c of this.c3)if(c&&c.vis){nexCtrl3DHide(c);ch=true}
+      if(HandContour.hideAll())ch=true;
       if(ch)Scene.dirty=true
     },
     async start(){
@@ -487,21 +489,28 @@
     },
     /* Native sonuç: R|yaş_ms|çıkarım_ms|elSayısı|Etiket,skor,x,y,z,... (el başına bir blok). */
     onNative(s){
-      const a=s.split('|'),n=+a[3]||0,now=performance.now(),lms=[],hds=[];
+      const a=s.split('|'),n=+a[3]||0,now=performance.now(),lms=[],hds=[],kin=[];
+      /* Stage 74: el bloklarından sonra sırası sabit olmayan ek bloklar: K (C++ kinematiği, el başına), F (landmark'lar
+         native'de süzüldü), T (yakalama), P (gönderim). */
+      let tc=null,pc=null,nf=false;const ks=[];
+      for(let j=4+n;j<a.length;j++){
+        const g=a[j],c0=g.charCodeAt(0);
+        if(c0===84)tc=g;else if(c0===80)pc=g;else if(c0===75)ks.push(g);else if(c0===70)nf=true
+      }
       for(let i=0;i<n;i++){
         const b=a[4+i];if(!b)continue;
         const f=b.split(','),pts=[];
         for(let k=2;k+2<f.length;k+=3)pts.push({x:+f[k],y:+f[k+1],z:+f[k+2]});
         if(pts.length<21)continue;
-        lms.push(pts);hds.push([{categoryName:f[0],score:+f[1]}])
+        lms.push(pts);hds.push([{categoryName:f[0],score:+f[1]}]);
+        kin.push(ks.length===n?ks[i]:null)
       }
       let age=Math.min(250,Math.max(0,+a[1]||0));const inf=Math.max(0,+a[2]||0);
       let t0=now-age;
       /* Stage 45: yakalama zamanı (T) ve gönderim anı (P) native saatindedir (elapsedRealtime, ms). Saat farkı
          o=min(alış−P) ile bulunur (aktarım gecikmesinin en küçüğü ≈ 0 kabul edilir); yakalama = T + o.
          Böylece zaman damgası UI/kuyruk gecikme dalgalanmasıyla titremez, yaş da aktarım süresini kapsar. */
-      const tc=a[4+n],pc=a[5+n];
-      if(tc&&pc&&tc.charCodeAt(0)===84&&pc.charCodeAt(0)===80){
+      if(tc&&pc){
         const cap=+tc.slice(2),post=+pc.slice(2);
         if(cap>0&&post>0){
           const d=now-post;let o=this.nOff;
@@ -528,7 +537,8 @@
         const el=$('#hstat');if(el)el.textContent=(this.status||'')+' · '+txt;
         if(!this.sToast){this.sToast=1;try{Diag.toast(txt,'var(--ok)',7000)}catch(e){}}
       }
-      this.ingest({landmarks:lms,handedness:hds},t0,now)
+      this.lat=age;
+      this.ingest({landmarks:lms,handedness:hds,kin:kin,nf:nf&&ks.length===n},t0,now)
     },
     nativeFailed(msg){
       Diag.toast('Native el takibi durdu: '+msg,'var(--warn)',5000);
@@ -760,10 +770,14 @@
         Cam.yaw+=dy;
         Cam.pitch=clamp(Cam.pitch+dp,-lim,lim)
       }
-      this.glide(t,false)
+      this.glide(t,false);
+      /* solma sürüyorsa ya da görünen bir elin ölçümü bayatlamak üzereyse çiz (el durgunken boşuna çizim yok) */
+      if(this.on&&(this.fading||(this.fadeAt&&performance.now()>=this.fadeAt)))this.draw()
     },
+    _act:[],
     glide(t,force){
-      const act=this.slots.filter(s=>s.on&&s.hasT);
+      const act=this._act;act.length=0;
+      for(const s of this.slots)if(s.on&&s.hasT)act.push(s);
       if(!act.length)return;
       if(this.fast()){
         /* Turbo mod (Stage 43): ölçüm gecikmesi (yakalama + çıkarım + aktarım) kadar ileri tahmin yapılır, böylece el
@@ -833,25 +847,73 @@
         if(s&&s.on&&s.mode==='ui')Input.move(this.rayOf(s))
       }
     },
+    /* Stage 74 — el görünümü: 'kontur' (varsayılan; içi boş siyah parmak konturları + işaret ışını),
+       'ikisi' (kontur + Stage 72 kontrolcü), 'kumanda' (yalnızca Stage 72 kontrolcü). */
+    view(){const v=Settings.v.hview;return v==='kumanda'||v==='ikisi'?v:'kontur'},
+    /* Native kamera arka planı (PreviewView, FILL_CENTER) analiz karesinden farklı en-boy oranında kırpılır.
+       Kontur gerçek elin ÜSTÜNE otursun ve dokunulan yer görünen yer olsun diye analiz koordinatları ekrandaki
+       önizleme koordinatlarına eşlenir. Arka plan yokken eşleme yoktur (tüm kamera görüş alanı ekrana yayılır). */
+    mk:[1,1],
+    mapUpd(){
+      let kx=1,ky=1;
+      if(Pass.on&&Pass.nat&&!Stereo.on){
+        const sz=/^(\d+)x(\d+)$/.exec(NHand.camSize||''),aA=sz&&+sz[2]>0?Math.max(+sz[1],+sz[2])/Math.min(+sz[1],+sz[2]):4/3;
+        const aP=[4/3,16/9,16/9][clamp(Settings.v.hcq|0,0,2)],aS=Math.max(1e-3,innerWidth/Math.max(1,innerHeight));
+        if(aP>=aA)ky*=aP/aA;else kx*=aA/aP;                 /* analiz → önizleme (aynı yatay görüş alanı) */
+        if(aS>aP)ky*=aS/aP;else kx*=aP/aS                  /* önizleme → ekran (kaplayacak şekilde kırpma) */
+      }
+      this.mk[0]=kx;this.mk[1]=ky
+    },
+    mapX(x){return (x-.5)*this.mk[0]+.5},
+    mapY(y){return (y-.5)*this.mk[1]+.5},
+    _cp:null,
     draw(){
-      if(!Settings.v.hdraw||Game.on||(window.Gorilla&&Gorilla.on)){
+      const gor=!!(window.Gorilla&&Gorilla.on),view=this.view();
+      if(!Settings.v.hdraw||Game.on||(gor&&view==='kumanda')){
         this.clr();
         return
       }
       const cam=Cam.cam;
       if(!cam||typeof THREE==='undefined')return;
-      const H=innerHeight,W=innerWidth,Wm=(Stereo.on&&!XR.session)?W/2:W,mir=this.mirror;
-      let any=false;
+      this.mapUpd();
+      const H=innerHeight,W=innerWidth,Wm=(Stereo.on&&!XR.session)?W/2:W,mir=this.mirror,now=performance.now();
+      const useC=view!=='kumanda'&&HandContour.init(THREE,cam),useK=view!=='kontur'&&!gor;
+      const cp=this._cp||(this._cp=Array.from({length:21},()=>({x:0,y:0})));
+      let any=false,fading=false,fadeAt=0;
+      /* tazelik penceresi: ölçüm aralığının ~2.5 katı (30-60 Hz'de 110 ms; takip yavaşlarsa en çok 300 ms) */
+      const fw=clamp((this.resDt||40)*2.5,110,300);
       for(const s of this.slots){
         const c=this.c3[s.id]||(this.c3[s.id]=nexCtrl3D(THREE,cam));
-        if(!s.on||!s.hasT){if(c.vis){nexCtrl3DHide(c);any=true}continue}
-        const p=s.dq,a=p[0],b=p[9],ax=mir?1-a.x:a.x,bx=mir?1-b.x:b.x,
-          mx=(ax+bx)*.5,my=(a.y+b.y)*.5,sr=Math.hypot((ax-bx)*Wm,(a.y-b.y)*H)/H,
+        if(!s.on||!s.hasT){
+          if(c.vis){nexCtrl3DHide(c);any=true}
+          if(HandContour.hide(s.id))any=true;
+          s.ca=0;continue
+        }
+        const p=s.dq,a=p[0],b=p[9],ax=this.mapX(mir?1-a.x:a.x),bx=this.mapX(mir?1-b.x:b.x),ay=this.mapY(a.y),by=this.mapY(b.y),
+          mx=(ax+bx)*.5,my=(ay+by)*.5,sr=Math.hypot((ax-bx)*Wm,(ay-by)*H)/H,
           hov=!!(s.hit||s.mode==='ui');
-        nexCtrl3DPlace(THREE,c,cam,{nx:mx*2-1,ny:-(my*2-1),sr:sr,cx:s.dsx*2-1,cy:-(s.dsy*2-1),
-          dist:s.hit?s.hit.distance:0,cursor:hov,pinch:!!s.pr,right:(s.label==='Right')!==!!this.ctrlFlip});
-        any=true
+        /* Kontur saydamlığı: taze ölçümde 1 (güvene göre en az .55), ölçüm kesilince fw + ~120 ms'de söner; kayıptan
+           sonra yeniden bulunan el yeni konumunda belirir (eski konumdan kayarak gelmez). */
+        const fresh=now-(s.seenAt||0)<fw,conf=s.conf==null?1:s.conf,tgt=fresh?.55+.45*clamp((conf-.25)/.45,0,1):0;
+        const k=1-Math.exp(-Math.min(.05,Math.max(.001,(now-(s.cat||now))/1000))/(tgt>(s.ca||0)?.03:.05));
+        s.cat=now;s.ca=(s.ca||0)+(tgt-(s.ca||0))*k;
+        if(Math.abs(tgt-s.ca)>.01)fading=true;
+        else if(fresh&&s.ca>.02){const ex=(s.seenAt||0)+fw+2;if(!fadeAt||ex<fadeAt)fadeAt=ex}
+        if(useC&&s.ca>.02){
+          for(let i=0;i<21;i++){const q=p[i];cp[i].x=this.mapX(mir?1-q.x:q.x);cp[i].y=this.mapY(q.y)}
+          const d=Math.min(.8,Math.max(.4,.12/Math.max(sr,.04)));
+          HandContour.place(s.id,cp,d,cam,clamp(Math.min(W,H)/360,2,4.5),s.ca);
+          any=true
+        }else if(HandContour.hide(s.id))any=true;
+        if(useK||(useC&&hov&&!gor)){
+          /* kontur modunda gövdesiz: ışın işaret parmağı ucundan çıkar */
+          const tip=useK?null:cp[8];
+          nexCtrl3DPlace(THREE,c,cam,{nx:tip?tip.x*2-1:mx*2-1,ny:tip?-(tip.y*2-1):-(my*2-1),sr:sr,cx:s.dsx*2-1,cy:-(s.dsy*2-1),
+            dist:s.hit?s.hit.distance:0,cursor:hov,pinch:!!s.pr,right:(s.label==='Right')!==!!this.ctrlFlip,body:useK});
+          any=true
+        }else if(c.vis){nexCtrl3DHide(c);any=true}
       }
+      this.fading=fading;this.fadeAt=fadeAt;
       if(any)Scene.dirty=true
     },
     lost(){
@@ -950,9 +1012,11 @@
       for(let i=0;i<Math.min(2,lm.length);i++){
         const raw=lm[i];
         if(!Array.isArray(raw)||raw.length<21)continue;
-        const h=hd[i]&&hd[i][0];
+        const h=hd[i]&&hd[i][0],kb=r.kin&&r.kin[i],K=kb?HandFeat.parseK(kb):null;
         if((h?h.score:1)<.12)continue;
-        dets.push({raw,label:(h&&h.categoryName)||'',cx:(raw[0].x+raw[9].x)/2,cy:(raw[0].y+raw[9].y)/2})
+        /* Stage 74: native güveni çok düşükse (bozuk iskelet / çok uzak) bu ölçüm etkileşim üretmez */
+        if(K&&K.k[0]<.08&&!(K.flags&HandFeat.F.REJ))continue;
+        dets.push({raw,label:(h&&h.categoryName)||'',score:h?h.score:1,K,nf:!!(r.nf&&K),cx:(raw[0].x+raw[9].x)/2,cy:(raw[0].y+raw[9].y)/2})
       }
       const S=this.slots;
       S.forEach(s=>{s.d=null});
@@ -1013,8 +1077,11 @@
     /* Tek elin yeni ölçümü: çimdik, imleç, süzgeçler, hız. */
     upd(s,d,t0,panels){
       const raw=d.raw;
-      s.raw=raw;s.miss=0;s.missAt=0;s.lastSeen=t0;
+      s.raw=raw;s.miss=0;s.missAt=0;s.lastSeen=t0;s.seenAt=performance.now();s.score=d.score;
       if(d.label)s.label=d.label;
+      /* Stage 74: C++ özellikleri bu ölçüme ait (bükülme, çimdik, avuç yönü, hız, güven) */
+      if(d.K){s.kin=d.K.k;s.kf=d.K.flags;s.kinAt=t0;s.conf=d.K.k[0];if(d.K.flags&HandFeat.F.REACQ)s.reacq=s.seenAt}
+      else{s.kin=null;s.conf=d.score==null?1:d.score}
       s.cx=(raw[0].x+raw[9].x)/2;s.cy=(raw[0].y+raw[9].y)/2;
       const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
       const size=Math.max(dist(raw[0],raw[9]),dist(raw[5],raw[17])*1.15)||.1;
@@ -1033,7 +1100,7 @@
         px=s.pa.ox+(midx-s.pa.mx);py=s.pa.oy+(midy-s.pa.my)
       }
       s.pr=pr;
-      const x=this.mirror?1-px:px,y=py;
+      const x=this.mapX(this.mirror?1-px:px),y=this.mapY(py);
       s.x=x;s.y=y;
       const rc=this.hitRC,pv=this.pv2||(this.pv2=new THREE.Vector2());
       rc.setFromCamera(pv.set(x*2-1,-(y*2-1)),Cam.cam);
@@ -1041,14 +1108,18 @@
       const ik=1/clamp(size,.05,.6); /* süzgeç hızı el boyuna göre ölçer */
       /* Stage 43: her eklemin süzgeçli hızı (ekran/sn) — glide() hızlı modda gecikmeyi telafi etmek için kullanır. */
       const dtv=s.pst?(t0-s.pst)/1000:0,okv=dtv>=.004&&dtv<.25;
+      const nf=d.nf; /* landmark'lar native'de zaten uyarlanır süzgeçten geçti: ikinci süzgeç yalnızca gecikme ekler */
       for(let i=0;i<21;i++){
         const q=s.q[i],ox=q.x,oy=q.y;
-        q.x=s.lf[i*2].f(raw[i].x,t0,ik);
-        q.y=s.lf[i*2+1].f(raw[i].y,t0,ik);
+        if(nf){q.x=raw[i].x;q.y=raw[i].y;s.lf[i*2].reset();s.lf[i*2+1].reset()}
+        else{
+          q.x=s.lf[i*2].f(raw[i].x,t0,ik);
+          q.y=s.lf[i*2+1].f(raw[i].y,t0,ik)
+        }
         if(okv){s.lvx[i]+=((q.x-ox)/dtv-s.lvx[i])*.6;s.lvy[i]+=((q.y-oy)/dtv-s.lvy[i])*.6}
         else{s.lvx[i]=0;s.lvy[i]=0}
       }
-      const nx=s.fx.f(x,t0,ik),ny=s.fy.f(y,t0,ik);
+      const nx=nf?x:s.fx.f(x,t0,ik),ny=nf?y:s.fy.f(y,t0,ik);
       if(s.pst){
         const dt=Math.max(.004,(t0-s.pst)/1000);
         s.vx+=((nx-s.psx)/dt-s.vx)*.55;

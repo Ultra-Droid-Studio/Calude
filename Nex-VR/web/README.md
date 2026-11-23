@@ -17,6 +17,7 @@ APK'ya sadece `assets/index.html` girer. `web/` APK'ya girmez.
 | 02-mediapipe | MediaPipe kaynakları, yerel model önbelleği |
 | 03-wallart-settings | Duvar kâğıtları, Storage, DEF, Settings |
 | 04-diag-perf | Diag (bildirim/hata), Perf |
+| 041-prof | Stage 74: Prof (bölüm süreleri, GPU sorgusu, darboğaz), Quality (uyarlanır kalite), PerfHud (monitör) |
 | 05-render-scene | Renderer, Cam, Scene |
 | 06-draw-helpers | Çizim yardımcıları, ikonlar |
 | 07-window-ui | W7Desk, Pill, HMenu, WM (pencere yöneticisi) |
@@ -26,6 +27,8 @@ APK'ya sadece `assets/index.html` girer. `web/` APK'ya girmez.
 | 11-dock | Dock çizimi |
 | 12-keyboard-input-xr | Klavye, Stereo, Input, XR |
 | 13-hand | El takibi (OneEuro, NHand, Hand) |
+| 131-hand-feat | Stage 74: el özellikleri (native K blokları + aynı formüllerin JS yedeği) |
+| 132-hand-contour | Stage 74: içi boş siyah parmak konturları (GPU shader) |
 | 14-intro-world | Intro, GLBRoom, EnvSky, Minecraft dünyası |
 | 15-cinema-games | Sinema, Places, Game, Gezegenler |
 | 16-launcher-shizuku | AND, **SHZ (Shizuku)**, Pins, Launcher |

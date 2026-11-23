@@ -554,7 +554,7 @@
           })
       }
       else if(u.tab===1){
-        rowsCard(13);
+        rowsCard(15);
         step('Grafik kalitesi',q[v.quality],()=>{
           v.quality=Math.max(0,v.quality-1);
           S()
@@ -586,6 +586,16 @@
           });
         sw('FPS göstergesi',v.fps,()=>{
           v.fps=!v.fps;
+          S()
+          });
+        /* Stage 74: kalite profili (Otomatik: FPS + ısıya göre kademeli) ve performans monitörü */
+        {
+          const GQ=['auto',0,1,2],GQN=['Otomatik','Performans','Dengeli','Kalite'],gi=Math.max(0,GQ.indexOf(v.gq==null?'auto':v.gq));
+          const gq=k=>{v.gq=GQ[k];S();if(v.gq!=='auto')Quality.set(v.gq,null);Diag.toast('Kalite profili: '+GQN[k]+(v.gq==='auto'?' (şu an '+Quality.NAMES[Quality.level]+')':''),'var(--ok)',2200)};
+          step('Kalite profili',GQN[gi],()=>gq((gi+3)%4),()=>gq((gi+1)%4))
+        }
+        sw('Performans monitörü (debug)',!!v.pdbg,()=>{
+          v.pdbg=!v.pdbg;
           S()
           });
         sw('GPU tarayıcı (video, deneysel)',v.gpu!==false,()=>{
@@ -654,7 +664,7 @@
           })
       }
       else if(u.tab===3){
-        rowsCard(14);
+        rowsCard(16);
         sw('El takibi',Hand.on,()=>Hand.on?Hand.stop():Hand.start());
         step('Kamera',v.hcam==='user'?'Ön':'Arka',()=>{
           v.hcam=v.hcam==='user'?'environment':'user';
@@ -674,6 +684,17 @@
           v.hdraw=!v.hdraw;
           S();
           if(!v.hdraw)Hand.clr()
+          });
+        /* Stage 74: el görünümü ve native (C++) süzgeç */
+        {
+          const HV=['kontur','ikisi','kumanda'],HVN=['Parmak konturu','Kontur + kumanda','Kumanda'],hi=Math.max(0,HV.indexOf(Hand.view()));
+          const hv=k=>{v.hview=HV[k];S();Hand.hide3D();Hand.draw()};
+          step('El görünümü',HVN[hi],()=>hv((hi+2)%3),()=>hv((hi+1)%3))
+        }
+        sw('Native el süzgeci (C++)',v.hnf!==false,()=>{
+          v.hnf=v.hnf===false;
+          S();
+          if(Hand.on&&Hand.native)try{NHand.sync().catch(()=>{})}catch(e){}
           });
         sw('Turbo el (anında + gecikme telafisi)',v.hfast!==false,()=>{
           v.hfast=v.hfast===false;

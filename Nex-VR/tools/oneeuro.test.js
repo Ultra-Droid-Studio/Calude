@@ -20,7 +20,7 @@ const MC=[3,2.2,1.6,1.1,.8]; /* Hand.mcut() ile aynı tablo */
 /* --- kaynak kontrolü: çağrı yerleri gerçekten yeni imzayı kullanıyor --- */
 ok(/fx:fa\?new OE\(1\.4,10,2,\.8\):new OE\(mc,bt\),fy:fa\?new OE\(1\.4,10,2,\.8\):new OE\(mc,bt\)/.test(html),'imleç süzgeçleri (normal 1.2 / anında mod: ölü bölgeli, Stage 62)');
 ok(/fa\?new OE\(1\.4,10,2,\.8\):new OE\(mc\*1\.9,bt\)/.test(html),'iskelet süzgeçleri (anında modda ölü bölgeli düşük kesim, Stage 62)');
-ok(/s\.fx\.f\(x,t0,ik\),ny=s\.fy\.f\(y,t0,ik\)/.test(html),'imleç el boyu çarpanıyla süzülüyor');
+ok(/s\.fx\.f\(x,t0,ik\),ny=(nf\?y:)?s\.fy\.f\(y,t0,ik\)/.test(html),'imleç el boyu çarpanıyla süzülüyor (Stage 74: native süzülmüşse atlanır)');
 ok(/s\.lf\[i\*2\]\.f\(raw\[i\]\.x,t0,ik\)/.test(html)&&/s\.lf\[i\*2\+1\]\.f\(raw\[i\]\.y,t0,ik\)/.test(html),'iskelet el boyu çarpanıyla süzülüyor');
 ok(!/new OE\([^)]*0\.045\)/.test(html),'eski beta kalmadı');
 

@@ -81,9 +81,13 @@
     }
     this.dirty = false;
   };
+  /* Stage 74: aday listesi her sorguda yeniden ayrılmaz (kare başına onlarca dizi → çöp toplama takılması).
+     Sorgular iç içe çağrılmadığı için tek bir tampon yeterli. */
   World.prototype._cands = function (p, r) {
     if (this.dirty !== false) this._build();
-    var out = this.bigs.slice(), seen = this._seen = (this._seen || 0) + 1;
+    var out = this._out || (this._out = []), seen = this._seen = (this._seen || 0) + 1;
+    out.length = 0;
+    for (var b = 0; b < this.bigs.length; b++) out.push(this.bigs[b]);
     var x0 = Math.floor((p.x - r) / CELL), x1 = Math.floor((p.x + r) / CELL), z0 = Math.floor((p.z - r) / CELL), z1 = Math.floor((p.z + r) / CELL);
     for (var gx = x0; gx <= x1; gx++) for (var gz = z0; gz <= z1; gz++) {
       var a = this.grid[gx + ',' + gz]; if (!a) continue;
@@ -306,21 +310,21 @@
     this._bodyCollide();
 
     var cy = Math.cos(this.yaw), sy = Math.sin(this.yaw);
-    var rot = function (x, y, z) { return { x: x * cy + z * sy, y: y, z: -x * sy + z * cy }; };
+    var sc = this._sc || (this._sc = { Lk: { x: 0, y: 0, z: 0 }, dl: { x: 0, y: 0, z: 0 }, off: { x: 0, y: 0, z: 0 }, Wd: { x: 0, y: 0, z: 0 } });
+    var rot = function (x, y, z, o) { o.x = x * cy + z * sy; o.y = y; o.z = -x * sy + z * cy; return o; };
 
     var pushX = 0, pushY = 0, pushZ = 0, nx = 0, ny = 0, nz = 0, cN = 0, gripN = 0, gx = 0, gy = 0, gz = 0;
     for (var i = 0; i < 2; i++) {
       var H = hs[i];
       if (!H.valid) { H.contact = false; H.anchor = null; continue; }
-      var t0 = (k - 1) / n, t1 = k / n;
-      var Lk = {
-        x: H.prevL.x + (H.L.x - H.prevL.x) * t1,
-        y: H.prevL.y + (H.L.y - H.prevL.y) * t1,
-        z: H.prevL.z + (H.L.z - H.prevL.z) * t1
-      };
-      var dl = rot((H.L.x - H.prevL.x) / n, (H.L.y - H.prevL.y) / n, (H.L.z - H.prevL.z) / n);
-      var off = rot(Lk.x, Lk.y, Lk.z);
-      var Wd = { x: b.x + off.x, y: b.y + off.y, z: b.z + off.z };
+      var t1 = k / n, Lk = sc.Lk;
+      Lk.x = H.prevL.x + (H.L.x - H.prevL.x) * t1;
+      Lk.y = H.prevL.y + (H.L.y - H.prevL.y) * t1;
+      Lk.z = H.prevL.z + (H.L.z - H.prevL.z) * t1;
+      var dl = rot((H.L.x - H.prevL.x) / n, (H.L.y - H.prevL.y) / n, (H.L.z - H.prevL.z) / n, sc.dl);
+      var off = rot(Lk.x, Lk.y, Lk.z, sc.off);
+      var Wd = sc.Wd; Wd.x = b.x + off.x; Wd.y = b.y + off.y; Wd.z = b.z + off.z;
+      var wasContact = H.contact;
 
       if (!H.grip) H.anchor = null;
       if (H.grip && !H.anchor) {
@@ -357,6 +361,7 @@
         pushX += push.x / h; pushY += push.y / h; pushZ += push.z / h;
         nx += nn.x; ny += nn.y; nz += nn.z; cN++;
         H.contact = true; H.pos.x = res.p.x; H.pos.y = res.p.y; H.pos.z = res.p.z; H.n = nn; H.col = res.collider;
+        if (!wasContact && !H.skip) { H.touches = (H.touches || 0) + 1; H.touchV = Math.sqrt(dl.x * dl.x + dl.y * dl.y + dl.z * dl.z) / h; H.touchMat = res.collider && res.collider.mat; }
       } else {
         H.contact = false; H.pos.x = Wd.x; H.pos.y = Wd.y; H.pos.z = Wd.z;
       }

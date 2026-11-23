@@ -179,6 +179,13 @@
       }
       return c;
     },
+    /* Stage 74: yumuşak temas gölgesi (radyal koyu leke) */
+    blob: function (s) {
+      var c = mk(s), x = c.getContext('2d'), g = x.createRadialGradient(s / 2, s / 2, s * 0.04, s / 2, s / 2, s * 0.5);
+      g.addColorStop(0, 'rgba(0,0,0,.62)'); g.addColorStop(0.55, 'rgba(0,0,0,.32)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+      x.fillStyle = g; x.fillRect(0, 0, s, s);
+      return c;
+    },
     flame: function (s) {
       var c = mk(s), x = c.getContext('2d'), g = x.createRadialGradient(s / 2, s * 0.66, s * 0.04, s / 2, s * 0.62, s * 0.46);
       g.addColorStop(0, 'rgba(255,245,170,1)'); g.addColorStop(0.35, 'rgba(255,170,40,.95)'); g.addColorStop(0.75, 'rgba(230,70,10,.55)'); g.addColorStop(1, 'rgba(160,20,0,0)');
@@ -324,11 +331,13 @@
 
   function buildWorld(T, map, opt) {
     opt = opt || {};
-    var q = opt.quality == null ? 1 : opt.quality, ts = [64, 128, 192][q], R = rng(4242), reg = [];
+    var q = opt.quality == null ? 1 : opt.quality, ts = [64, 128, 256][q], R = rng(4242), reg = [];
     var group = new T.Group(); group.visible = false;
     function tx(kind, rep) {
       var t = new T.CanvasTexture(TEX[kind](ts, rng(kind.length * 977 + 13)));
-      t.wrapS = t.wrapT = T.RepeatWrapping; if (rep) t.repeat.set(rep, rep); reg.push(t); return t;
+      t.wrapS = t.wrapT = T.RepeatWrapping; if (rep) t.repeat.set(rep, rep); reg.push(t);
+      if (opt.aniso > 1 && q >= 1) t.anisotropy = Math.min(opt.aniso, q === 2 ? 8 : 4);   // eğik bakılan zemin/duvar netliği
+      return t;
     }
     function mat(kind, extra) { var m = new T.MeshLambertMaterial(Object.assign({ map: tx(kind), vertexColors: true }, extra || {})); reg.push(m); return m; }
     var M = { wood: mat('wood'), rock: mat('rock'), trunk: mat('bark'), shingle: mat('shingle'), white: mat('white') };
@@ -349,6 +358,15 @@
       } else if (c.type === 'seg') {
         var dv = [c.b.x - c.a.x, c.b.y - c.a.y, c.b.z - c.a.z], ln = Math.sqrt(dv[0] * dv[0] + dv[1] * dv[1] + dv[2] * dv[2]);
         b.add(cylP(c.R, c.R * 0.65, ln, 5, 2, true), { r: rotFromY(dv), t: [(c.a.x + c.b.x) / 2, (c.a.y + c.b.y) / 2, (c.a.z + c.b.z) / 2], c: col });
+      }
+    });
+    /* Stage 74: pişirilmiş temas gölgelemesi — zemine yakın köşe renkleri koyulaşır (gövde dipleri, platform ayakları).
+       Gerçek zamanlı gölge/AO maliyeti yok; bir kez, oluşturma sırasında hesaplanır. */
+    Object.keys(B).forEach(function (k) {
+      var b = B[k], P = b.pos, Cc = b.col;
+      for (var vi = 0; vi < P.length; vi += 3) {
+        var y = P[vi + 1]; if (y > 1.4) continue;
+        var f = 0.58 + 0.42 * Math.max(0, y) / 1.4; Cc[vi] *= f; Cc[vi + 1] *= f; Cc[vi + 2] *= f;
       }
     });
     var meshes = {};
@@ -386,6 +404,16 @@
     });
     imesh.instanceMatrix.needsUpdate = true; if (imesh.instanceColor) imesh.instanceColor.needsUpdate = true;
     imesh.count = L.length; group.add(imesh);
+
+    // Stage 74: ağaç diplerinde yumuşak gölge lekeleri — tek InstancedMesh (1 çizim çağrısı), şeffaf ama derinlik yazmaz
+    var bt = new T.CanvasTexture(TEX.blob(64)); reg.push(bt);
+    var bm = new T.MeshBasicMaterial({ map: bt, transparent: true, depthWrite: false, fog: true }); reg.push(bm);
+    var bg = new T.PlaneGeometry(1, 1); reg.push(bg); if (bg.rotateX) bg.rotateX(-PI / 2);
+    var trees = map.trees || [], blobs = new T.InstancedMesh(bg, bm, Math.max(1, trees.length + 1)); blobs.frustumCulled = false; blobs.renderOrder = 1;
+    var qI = new T.Quaternion();   // birim dönüş
+    trees.forEach(function (t, k) { pp.set(t.x, 0.03, t.z); var sz = t.r * 7 + 1.6; one.set(sz, 1, sz); m4.compose(pp, qI, one); blobs.setMatrixAt(k, m4); });
+    if (map.hut) { pp.set(map.hut.x, 0.03, map.hut.z); one.set(5.2, 1, 5.2); m4.compose(pp, qI, one); blobs.setMatrixAt(trees.length, m4); }
+    blobs.count = trees.length + (map.hut ? 1 : 0); blobs.instanceMatrix.needsUpdate = true; group.add(blobs);
 
     // şenlik ateşi
     var ft = new T.CanvasTexture(TEX.flame(64)); reg.push(ft);

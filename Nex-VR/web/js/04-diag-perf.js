@@ -56,7 +56,8 @@
         this.t=n;
         this.hist.push(this.fps);
         if(this.hist.length>60)this.hist.shift();
-        this.auto()
+        this.auto();
+        Quality.step(this.fps)
       }
     },
     /* Stage 61 — otomatik çözünürlük (düzeltildi):

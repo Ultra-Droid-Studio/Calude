@@ -2,7 +2,7 @@
 const fs=require('fs'),path=require('path');
 const h=fs.readFileSync(path.join(__dirname,'../app/src/main/assets/index.html'),'utf8');
 let f=0;const ok=(n,c)=>{console.log((c?'PASS ':'FAIL ')+n);if(!c)f++};
-const a=h.indexOf('    hold:0,lock:0,upAt:-1e9,probe:null,'),b=h.indexOf('  const Renderer={');
+const a=h.indexOf('    hold:0,lock:0,upAt:-1e9,probe:null,'),b0=h.indexOf('  const Renderer={'),b1=h.indexOf('  /* ---------- Stage 74: kare profilleyici'),b=b1>a&&b1<b0?b1:b0;   /* Stage 74: Perf'ten sonra 041-prof.js gelir */
 const body=h.slice(a,b).replace(/\n  };\s*$/,'');
 let now=0;global.performance={now:()=>now};global.document={hidden:false};
 const Settings={v:{autoq:true}},XR={session:null},Stereo={on:true},App={cap:()=>0};

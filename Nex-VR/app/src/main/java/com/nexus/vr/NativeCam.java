@@ -72,6 +72,8 @@ public class NativeCam {
     /** Ayarlar (JS'ten gelir). */
     public static class Cfg {
         public boolean front, prev, hand, lite;
+        /** Stage 74: native süzgeç (C++ HandKin). false: ham landmark gönderilir, JS süzer. */
+        public boolean nf = true;
         public int hands = 2, q = 0;
         public float det = .42f, pres = .42f, trk = .40f;
 
@@ -80,7 +82,7 @@ public class NativeCam {
         }
 
         boolean sameModel(Cfg o) {
-            return o != null && hands == o.hands && det == o.det && pres == o.pres && trk == o.trk;
+            return o != null && hands == o.hands && det == o.det && pres == o.pres && trk == o.trk && nf == o.nf;
         }
     }
 
@@ -132,6 +134,18 @@ public class NativeCam {
     private long thermalChecked = 0;
     long fpsT0 = 0;
     int fpsN = 0;
+    /** Stage 74: native el kinematiği (C++). Yalnızca MediaPipe sonuç iş parçacığında kullanılır. */
+    final HandKin kin = HandKin.available() ? new HandKin() : null;
+    volatile boolean kinOn = true;
+    /** Analiz karesinin (döndürülmüş) en-boy oranı; landmark x'i bu oranla ölçeklenir. */
+    volatile float aspect = 4f / 3f;
+    /**
+     * Stage 74 — uyarlanır takip çözünürlüğü: standart profilde (480x360) çıkarım sürekli yavaşsa ya da cihaz ısınırsa
+     * analiz 320x240'a iner; uzun süre rahatsa geri çıkar. Ani gidip gelme olmasın diye histerezis + bekleme süresi var.
+     * Kullanıcı "hafif" profili zorladıysa (Cfg.lite) zaten 320x240'tır, burası devreye girmez.
+     */
+    volatile boolean autoLite = false;
+    long slowSince = 0, fastSince = 0, lastResSwitch = 0;
 
     public NativeCam(Activity a, PreviewView p, Sink s) {
         act = a;
@@ -236,6 +250,7 @@ public class NativeCam {
 
     public void onDestroy() {
         stop();
+        analysisExec.execute(() -> { if (kin != null) kin.release(); });
         analysisExec.shutdown();
     }
 
@@ -420,8 +435,11 @@ public class NativeCam {
                 ImageAnalysis.Builder ab = new ImageAnalysis.Builder()
                         .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                         .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_RGBA_8888)
+                        // Stage 74: döndürmeyi CameraX native (libyuv) yapar; her karede Canvas ile ikinci kopya + döndürme kalkar.
+                        // Desteklenmeyen cihazda getRotationDegrees() != 0 gelir ve aşağıdaki eski Canvas yolu yine çalışır.
+                        .setOutputImageRotationEnabled(true)
                         .setTargetRotation(rot)
-                        .setResolutionSelector(c.lite ? sel(320, 240) : sel(480, 360));
+                        .setResolutionSelector((c.lite || autoLite) ? sel(320, 240) : sel(480, 360));
                 applyTune(new Camera2Interop.Extender<>(ab), tn);
 
                 Preview.Builder pb = new Preview.Builder().setTargetRotation(rot);
@@ -432,7 +450,12 @@ public class NativeCam {
 
                 CameraSelector cs = c.front ? CameraSelector.DEFAULT_FRONT_CAMERA : CameraSelector.DEFAULT_BACK_CAMERA;
                 if (c.hand) {
-                    liteMode = c.lite;
+                    liteMode = c.lite || autoLite;
+                    if (kin != null) {
+                        kin.reset();
+                        kinOn = c.nf;
+                        kin.config(c.nf, 1.6f, 9f, 2f);
+                    }
                     lastAnalysisMs = 0;
                     analysis = ab.build();
                     analysis.setAnalyzer(analysisExec, img -> analyze(img, my));
@@ -569,6 +592,7 @@ public class NativeCam {
                 rotCanvas.drawBitmap(rgba, mat, null);
                 use = rot;
             }
+            if (use.getHeight() > 0) aspect = use.getWidth() / (float) use.getHeight();
             long ts = SystemClock.uptimeMillis();
             if (ts <= lastTs) ts = lastTs + 1;
             lastTs = ts;
@@ -616,9 +640,13 @@ public class NativeCam {
         float age = !have ? 0f : Math.max(0f, (nowN - cap[0]) / 1e6f);
         float inf = !have ? 0f : Math.max(0f, (nowN - cap[1]) / 1e6f);
         if (have && inf > 0f && inf < 250f) infEma += (inf - infEma) * 0.2f;
+        adaptResolution(my);
         List<List<NormalizedLandmark>> L = res.landmarks();
         List<List<Category>> H = res.handedness();
         String out;
+        // Stage 74: önce C++ kinematiği (süzgeç + özellikler); başarılıysa el blokları süzülmüş landmark'larla yazılır.
+        final boolean kOk = runKin(L, H, have ? cap[0] : SystemClock.elapsedRealtimeNanos());
+        final boolean filtered = kOk && kinOn;
         synchronized (outSb) {
             StringBuilder sb = outSb;
             sb.setLength(0);
@@ -637,6 +665,15 @@ public class NativeCam {
                 }
                 sb.append('|').append(lab).append(',');
                 num(sb, sc, 1000);
+                if (filtered && i < 2) {
+                    final java.nio.FloatBuffer ko = kin.out;
+                    final int o = i * HandKin.OUT_STRIDE + HandKin.O_LM;
+                    for (int j = 0; j < 63; j++) {
+                        sb.append(',');
+                        num(sb, ko.get(o + j), 10000);
+                    }
+                    continue;
+                }
                 for (NormalizedLandmark p : pts) {
                     sb.append(',');
                     num(sb, p.x(), 10000);
@@ -646,6 +683,7 @@ public class NativeCam {
                     num(sb, p.z(), 10000);
                 }
             }
+            if (kOk) appendKin(sb, Math.min(2, L.size()), filtered);
             if (have) {
                 long t10 = cap[0] / 100000L; // 0.1 ms
                 sb.append("|T,").append(t10 / 10).append('.').append(t10 % 10);
@@ -656,6 +694,84 @@ public class NativeCam {
     }
 
     final long[] tmpCap = new long[2];
+
+    /**
+     * Stage 74: C++ kinematiğini çalıştırır ve her el için bir "K" bloğu ekler:
+     * K,yuva,bayrak,güven,boy,bükülme×5,çimdik×4,açıklık×4,normal×3,kuaterniyon×4,hız×3
+     * Native süzgeç açıksa el bloklarındaki landmark'lar süzülmüş değerlerdir ve mesaja "|F,1" eklenir (JS kendi süzgecini atlar).
+     * Kitaplık yoksa ya da bir el atlanırsa hiçbir şey eklenmez → JS eski (ham + JS süzgeci) yolunu kullanır.
+     */
+    boolean runKin(List<List<NormalizedLandmark>> L, List<List<Category>> H, long capNs) {
+        final HandKin k = kin;
+        if (k == null || !k.ok() || L == null) return false;
+        final int n = Math.min(2, L.size());
+        if (n == 0) return false;
+        final java.nio.FloatBuffer in = k.in;
+        for (int i = 0; i < n; i++) {
+            List<NormalizedLandmark> pts = L.get(i);
+            if (pts.size() < 21) return false;
+            float sc = 1f;
+            boolean right = false;
+            if (H != null && i < H.size() && !H.get(i).isEmpty()) {
+                sc = H.get(i).get(0).score();
+                right = "Right".equals(H.get(i).get(0).categoryName());
+            }
+            int b = i * HandKin.IN_STRIDE;
+            in.put(b, sc);
+            in.put(b + 1, right ? 1f : 0f);
+            for (int j = 0; j < 21; j++) {
+                NormalizedLandmark p = pts.get(j);
+                in.put(b + 2 + j * 3, p.x());
+                in.put(b + 3 + j * 3, p.y());
+                in.put(b + 4 + j * 3, p.z());
+            }
+        }
+        // bir el atlandıysa (bozuk veri) bu karede K yok, ham veri gönderilir
+        return k.process(n, capNs, aspect) == n;
+    }
+
+    void appendKin(StringBuilder sb, int n, boolean filtered) {
+        final java.nio.FloatBuffer out = kin.out;
+        for (int i = 0; i < n; i++) {
+            int o = i * HandKin.OUT_STRIDE;
+            sb.append("|K,");
+            sb.append((int) out.get(o + HandKin.O_SLOT)).append(',').append((int) out.get(o + HandKin.O_FLAGS));
+            for (int j = HandKin.O_CONF; j < HandKin.O_LM; j++) {
+                sb.append(',');
+                num(sb, out.get(o + j), 1000);
+            }
+        }
+        if (filtered) sb.append("|F,1");
+    }
+
+    /** Stage 74: çıkarım süresine ve ısıya göre analiz çözünürlüğünü uyarlar (histerezisli). */
+    void adaptResolution(final int my) {
+        final Cfg c = cfg;
+        if (c == null || c.lite || !c.hand) return;
+        final long now = SystemClock.elapsedRealtime();
+        if (now - lastResSwitch < 8000) return;
+        final boolean hot = thermal >= 2;
+        if (!autoLite) {
+            if (infEma > 42f || hot) { if (slowSince == 0) slowSince = now; } else slowSince = 0;
+            if (slowSince != 0 && now - slowSince > 3000) switchRes(true, my, now);
+        } else {
+            if (infEma < 20f && !hot) { if (fastSince == 0) fastSince = now; } else fastSince = 0;
+            if (fastSince != 0 && now - fastSince > 15000) switchRes(false, my, now);
+        }
+    }
+
+    void switchRes(final boolean lite, final int my, long now) {
+        autoLite = lite;
+        lastResSwitch = now;
+        slowSince = fastSince = 0;
+        sink.post("S|res|" + (lite ? "320x240" : "480x360") + "|" + Math.round(infEma), false);
+        act.runOnUiThread(() -> {
+            final Cfg c = cfg;
+            // gen ARTIRILMAZ: landmarker'ın sonuç dinleyicisi mevcut gen'e bağlıdır; yalnızca kamera yeniden bağlanır.
+            if (my != gen || c == null) return;
+            bindCamera(c, my);
+        });
+    }
 
     /** Hızlı sabit-ondalık yazım (String.format yok; kare başına ~130 sayı). scale: 10, 1000, 10000. */
     static void num(StringBuilder sb, float v, int scale) {

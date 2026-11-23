@@ -229,6 +229,8 @@ button:focus-visible{outline:2px solid var(--sec);outline-offset:2px}button:disa
 
 <script src="gorilla-phys.js"></script>
 <script src="gorilla-art.js"></script>
+<script src="gorilla-npc.js"></script>
+<script src="gorilla-audio.js"></script>
 <script src="gorilla.js"></script>
 <div id="err" role="alertdialog"><div class="glass"><h2 id="errT">Hata</h2><p id="errB"></p><p id="errH" style="color:var(--mu)"></p><button onclick="location.reload()">Yeniden dene</button></div></div>
 
@@ -579,13 +581,14 @@ button:focus-visible{outline:2px solid var(--sec);outline-offset:2px}button:disa
       }catch(e){}
     }
   };
-  const DEF={ghand:0,gaa:0,pxb:0,ghz:0,gwin:0,quality:Dev.tier>=2?1:0,dpr:1,sens:1,alpha:.82,acc:0,pitch:1.2,fps:true,reduce:matchMedia('(prefers-reduced-motion:reduce)').matches,auto:false,layout:0,wp:0,fpscap:0,autoq:true,saver:false,inv:false,hcam:'environment',hsm:3,hclk:3,hdw:2,hdraw:true,hprev:false,hsmo:false,hfast:true,shz:true,hcq:0,hone:false,fbr:1,fco:1,fsa:1,fhu:0,fgr:false,fse:false,fov:75,vrProfile:'cardboard',vrEyeSep:.064,vrFov:75,vrOffsetY:0,vrScale:.85,toastms:3800,tbot:false,h24:true,ssec:true,cdec:4,nfs:22,tmin:5,awake:false,pass:true,pscale:1,wdist:2.9,ddist:1.8,pill:true,w7w:1280,w7q:1.25,hmenu:true,hmflip:false,pins:['browser','settings','win7pc','cinema','saber','perf','scene','help']};
+  const DEF={ghand:0,gaa:0,pxb:0,ghz:0,gwin:0,quality:Dev.tier>=2?1:0,dpr:1,sens:1,alpha:.82,acc:0,pitch:1.2,fps:true,reduce:matchMedia('(prefers-reduced-motion:reduce)').matches,auto:false,layout:0,wp:0,fpscap:0,autoq:true,saver:false,inv:false,hcam:'environment',hsm:3,hclk:3,hdw:2,hdraw:true,hprev:false,hsmo:false,hfast:true,shz:true,hcq:0,hone:false,fbr:1,fco:1,fsa:1,fhu:0,fgr:false,fse:false,fov:75,vrProfile:'cardboard',vrEyeSep:.064,vrFov:75,vrOffsetY:0,vrScale:.85,toastms:3800,tbot:false,h24:true,ssec:true,cdec:4,nfs:22,tmin:5,awake:false,pass:true,pscale:1,wdist:2.9,ddist:1.8,pill:true,w7w:1280,w7q:1.25,hmenu:true,hmflip:false,hview:'kontur',hnf:true,pdbg:false,gq:'auto',pins:['browser','settings','win7pc','cinema','saber','perf','scene','help']};
   const Settings={
     v:Object.assign({},DEF,Storage.get()),
     save(){
       Storage.set(this.v)
     },
     apply(){
+      try{PerfHud.sync()}catch(e){}
       const v=this.v;
       BAR=v.pill!==false?0:58;
       document.documentElement.style.setProperty('--pri',ACC[v.acc]);
@@ -678,7 +681,8 @@ button:focus-visible{outline:2px solid var(--sec);outline-offset:2px}button:disa
         this.t=n;
         this.hist.push(this.fps);
         if(this.hist.length>60)this.hist.shift();
-        this.auto()
+        this.auto();
+        Quality.step(this.fps)
       }
     },
     /* Stage 61 — otomatik çözünürlük (düzeltildi):
@@ -726,6 +730,142 @@ button:focus-visible{outline:2px solid var(--sec);outline-offset:2px}button:disa
         this.lo=0;
         this.hi=0
       }
+    }
+  };
+  /* ---------- Stage 74: kare profilleyici + darboğaz sınıflandırma + uyarlanır kalite + debug monitörü ----------
+     Ölçüm her zaman açıktır ama çok ucuzdur: bölüm başına iki performance.now() ve sabit boyutlu dizilere toplama
+     (kare başına bellek ayırma yok). Monitör (HUD) kapalıyken DOM'a hiç dokunulmaz. */
+  const Prof={
+    S:['input','hand','game','phys','npc','ui','render'],
+    INPUT:0,HAND:1,GAME:2,PHYS:3,NPC:4,UI:5,RENDER:6,
+    acc:new Float64Array(7),avg:new Float64Array(7),peak:new Float64Array(7),
+    n:0,fStart:0,lastT:0,
+    /* kare aralığı ve CPU süresi (ms, üstel ortalama), düşen kare, açıklanamayan duraksama (GC/sistem şüphesi) */
+    dtAvg:16.7,cpuAvg:0,cpuPeak:0,drops:0,dropsWin:0,stalls:0,frames:0,lastDropAt:0,
+    gpuMs:-1,gpu:null,
+    now(){return performance.now()},
+    add(i,t0){this.acc[i]+=performance.now()-t0},
+    begin(t){
+      const dt=this.lastT?t-this.lastT:16.7;this.lastT=t;
+      if(dt>0&&dt<1000){
+        this.dtAvg+=(dt-this.dtAvg)*.05;
+        const tgt=1000/this.targetHz();
+        if(dt>tgt*1.6){this.drops++;this.dropsWin++;this.lastDropAt=t;
+          /* normalde akıcıyken TEK uzun kare ve o karede ölçülen JS işi küçük → JS dışı duraksama (çöp toplama,
+             shader derleme, sistem). Sürekli yavaşsa bu sayılmaz (o durum GPU/ekran bileşimi darboğazıdır). */
+          if(this.cpuLast<tgt*.5&&this.dtAvg<tgt*1.25)this.stalls++}
+      }
+      this.fStart=performance.now();
+      for(let i=0;i<7;i++)this.acc[i]=0
+    },
+    cpuLast:0,
+    end(){
+      const cpu=performance.now()-this.fStart;this.cpuLast=cpu;this.frames++;
+      this.cpuAvg+=(cpu-this.cpuAvg)*.05;if(cpu>this.cpuPeak)this.cpuPeak=cpu;
+      for(let i=0;i<7;i++){const v=this.acc[i];this.avg[i]+=(v-this.avg[i])*.05;if(v>this.peak[i])this.peak[i]=v}
+      if(this.gpu)this.gpu.poll()
+    },
+    targetHz(){const c=App.cap();return c||Dev.hz||60},
+    /* her 2 sn'de tepe değerleri sıfırla (monitörde "son 2 sn en kötü") */
+    stallsWin:0,_st0:0,
+    decay(){this.peak.fill(0);this.cpuPeak=0;this.dropsWin=0;this.stallsWin=this.stalls-this._st0;this._st0=this.stalls},
+    /* GPU süresi: yalnızca WebGL zaman sorgusu uzantısı varsa (Android WebView'de çoğu zaman yok → "ölçülemiyor") */
+    initGpu(r){
+      try{
+        const gl=r.getContext(),w2=typeof WebGL2RenderingContext!=='undefined'&&gl instanceof WebGL2RenderingContext;
+        const ext=w2?gl.getExtension('EXT_disjoint_timer_query_webgl2'):gl.getExtension('EXT_disjoint_timer_query');
+        if(!ext){this.gpuMs=-1;return}
+        const P=this;
+        this.gpu={q:null,busy:false,
+          start(){if(this.busy)return;this.q=w2?gl.createQuery():ext.createQueryEXT();if(w2)gl.beginQuery(ext.TIME_ELAPSED_EXT,this.q);else ext.beginQueryEXT(ext.TIME_ELAPSED_EXT,this.q);this.open=true},
+          stop(){if(!this.open)return;this.open=false;if(w2)gl.endQuery(ext.TIME_ELAPSED_EXT);else ext.endQueryEXT(ext.TIME_ELAPSED_EXT);this.busy=true},
+          poll(){
+            if(!this.busy||!this.q)return;
+            const av=w2?gl.getQueryParameter(this.q,gl.QUERY_RESULT_AVAILABLE):ext.getQueryObjectEXT(this.q,ext.QUERY_RESULT_AVAILABLE_EXT),dis=gl.getParameter(ext.GPU_DISJOINT_EXT);
+            if(av&&!dis){const ns=w2?gl.getQueryParameter(this.q,gl.QUERY_RESULT):ext.getQueryObjectEXT(this.q,ext.QUERY_RESULT_EXT);const ms=ns/1e6;P.gpuMs=P.gpuMs<0?ms:P.gpuMs+(ms-P.gpuMs)*.1}
+            if(av||dis){if(w2)gl.deleteQuery(this.q);else ext.deleteQueryEXT(this.q);this.q=null;this.busy=false}
+          }}
+      }catch(e){this.gpu=null;this.gpuMs=-1}
+    },
+    /* Darboğaz tahmini: hedef kare süresine göre en çok neyin taştığı. Kesin değil; ölçülebilen verilerden çıkarım. */
+    bottleneck(){
+      const tgt=1000/this.targetHz(),fps=1000/Math.max(1,this.dtAvg),ok=fps>=this.targetHz()*.9;
+      const why=[];
+      if(Quality.thermal>=2)why.push('ısınma (termal '+Quality.thermal+')');
+      if(this.gpuMs>tgt*.85)why.push('GPU');
+      if(this.cpuAvg>tgt*.7){let m=0;for(let i=1;i<7;i++)if(this.avg[i]>this.avg[m])m=i;why.push('CPU/JS: '+this.S[m])}
+      if(Hand.on&&Hand.ema>tgt*1.5)why.push('el takibi çıkarımı');
+      if(!ok&&this.cpuAvg<tgt*.5&&this.gpuMs<0)why.push('GPU / ekran bileşimi olası (GPU süresi ölçülemiyor, JS işi küçük)');
+      if(this.stallsWin>2)why.push('ara sıra JS dışı duraksama (GC/derleme/sistem)');
+      if(!why.length&&!ok)why.push('bilinmiyor');
+      return ok&&!why.length?'yok':why.join(', ')
+    }
+  };
+  /* ---------- Uyarlanır kalite: Performans (0) / Dengeli (1) / Kalite (2) ----------
+     Cihaz sınıfından başlar; FPS hedefin altında KALICI olarak kalırsa (6 sn) bir kademe iner, uzun süre (25 sn)
+     rahatsa ve cihaz ısınmıyorsa bir kademe çıkar. Isınma ciddiyse (termal ≥ 3) hemen iner ve soğuyana kadar çıkmaz.
+     Ani gidip gelme yok: her değişimden sonra 10 sn bekleme. El takibi bu kademeden ETKİLENMEZ (öncelikli). */
+  const Quality={
+    NAMES:['Performans','Dengeli','Kalite'],
+    level:1,thermal:0,lo:0,hi:0,hold:0,listeners:[],
+    init(){
+      const v=Settings.v.gq;
+      this.level=v===0||v===1||v===2?v:(Dev.tier>=2?2:Dev.tier>=1?1:0);
+      this.hold=performance.now()+8000
+    },
+    auto(){return !(Settings.v.gq===0||Settings.v.gq===1||Settings.v.gq===2)},
+    set(l,why){
+      l=clamp(l|0,0,2);if(l===this.level)return;
+      this.level=l;this.hold=performance.now()+10000;this.lo=this.hi=0;
+      for(const f of this.listeners)try{f(l)}catch(e){}
+      if(why)try{Diag.toast('Kalite: '+this.NAMES[l]+' ('+why+')','var(--warn)',2200)}catch(e){}
+    },
+    on(f){this.listeners.push(f)},
+    /* Perf.tick her 0.5 sn çağırır */
+    step(fps){
+      if(!this.auto()||document.hidden)return;
+      const now=performance.now(),tgt=Prof.targetHz();
+      if(this.thermal>=3&&this.level>0&&now>this.hold-8000){this.set(this.level-1,'cihaz ısındı');return}
+      if(now<this.hold)return;
+      if(fps<tgt*.85){this.hi=0;if(++this.lo>=12&&this.level>0)this.set(this.level-1,'FPS düşük')}
+      else if(fps>tgt*.97&&this.thermal<2){this.lo=0;if(++this.hi>=50&&this.level<2&&this.level<this.cap())this.set(this.level+1,'FPS rahat')}
+      else{this.lo=Math.max(0,this.lo-1);this.hi=Math.max(0,this.hi-1)}
+    },
+    cap(){return Dev.tier>=2?2:Dev.tier>=1?2:1}
+  };
+  window.__nxThermal=l=>{Quality.thermal=l|0;if(l>=3&&Quality.auto()&&Quality.level>0)Quality.set(Quality.level-1,'cihaz ısındı')};
+  /* ---------- Debug / performans monitörü (Ayarlar → "Performans monitörü") ---------- */
+  const PerfHud={
+    el:null,t:0,dec:0,ni:null,niAt:0,
+    sync(){
+      const want=!!Settings.v.pdbg;
+      if(want&&!this.el){
+        const e=document.createElement('pre');e.id='nxhud';
+        e.style.cssText='position:fixed;left:8px;top:calc(8px + env(safe-area-inset-top));z-index:99995;margin:0;padding:8px 10px;max-width:min(92vw,560px);'+
+          'background:rgba(0,0,0,.72);color:#e8f2ff;font:11px/1.35 ui-monospace,monospace;border-radius:10px;pointer-events:none;white-space:pre-wrap';
+        document.body.appendChild(e);this.el=e
+      }else if(!want&&this.el){this.el.remove();this.el=null}
+    },
+    tick(t){
+      if(!this.el)return;
+      if(t-this.t<500)return;
+      this.t=t;
+      if(t-this.dec>2000){this.dec=t;Prof.decay()}
+      if(t-this.niAt>1000){this.niAt=t;try{const j=window.AndroidBridge&&AndroidBridge.perfInfo&&AndroidBridge.perfInfo(NX_T);this.ni=j?JSON.parse(j):null}catch(e){this.ni=null}}
+      const P=Prof,f=n=>n.toFixed(1),sl=Hand.slots||[],ni=this.ni,mem=performance.memory;
+      const hs=i=>{const s=sl[i];if(!Hand.on||!s||!s.on)return '–';const k=s.kv||s.kin;return (s.label==='Right'?'sağ ':s.label==='Left'?'sol ':'')+(s.conf==null?'?':s.conf.toFixed(2))+(s.kin?' (native)':'')+(k?' bük '+Array.from(k.subarray(2,7),x=>Math.round(x*9)).join(''):'')};
+      const lines=[
+        'FPS '+f(1000/Math.max(1,P.dtAvg))+' / hedef '+P.targetHz()+'  kare '+f(P.dtAvg)+' ms  düşen '+P.drops+' (2sn: '+P.dropsWin+')  duraksama '+P.stalls,
+        'CPU kare '+f(P.cpuAvg)+' ms (tepe '+f(P.cpuPeak)+')  GPU '+(P.gpuMs<0?'ölçülemiyor':f(P.gpuMs)+' ms')+'  çözünürlük ×'+Renderer.scale,
+        P.S.map((n,i)=>n+' '+f(P.avg[i])).join('  '),
+        'El: '+(Hand.on?(Hand.native?'native ':'worker ')+'çıkarım '+Math.round(Hand.ema)+' ms  gecikme '+Math.round(Hand.lat||0)+' ms  sonuç '+(Hand.sInf||0)+'/sn  kamera '+(NHand.camFps||'?')+' fps '+(NHand.camSize||''):'kapalı'),
+        'El 1 güven '+hs(0)+'   El 2 güven '+hs(1)+'   landmark '+(Hand.on?sl.filter(s=>s&&s.on).length*21:0),
+        'Kalite '+Quality.NAMES[Quality.level]+(Quality.auto()?' (oto)':'')+'  termal '+Quality.thermal+'  darboğaz: '+P.bottleneck(),
+        'Pencere '+WM.panels.filter(p=>!p.userData.dock&&!p.userData.kbd).length+'  WebView '+(ni?ni.views:'?')+'  Android uyg. '+(ni?ni.mirrors:'?')+
+          '  JS yığın '+(mem?Math.round(mem.usedJSHeapSize/1048576)+' MB':'?')+(ni?'  native '+Math.round(ni.nh/1048576)+' MB  boş RAM '+Math.round(ni.avail/1048576)+' MB'+(ni.low?' (DÜŞÜK)':''):'')
+      ];
+      if(window.Gorilla&&Gorilla.on&&Gorilla.stats)lines.push(Gorilla.stats());
+      this.el.textContent=lines.join('\n')
     }
   };
   const Renderer={
@@ -3923,7 +4063,7 @@ button:focus-visible{outline:2px solid var(--sec);outline-offset:2px}button:disa
           })
       }
       else if(u.tab===1){
-        rowsCard(13);
+        rowsCard(15);
         step('Grafik kalitesi',q[v.quality],()=>{
           v.quality=Math.max(0,v.quality-1);
           S()
@@ -3955,6 +4095,16 @@ button:focus-visible{outline:2px solid var(--sec);outline-offset:2px}button:disa
           });
         sw('FPS göstergesi',v.fps,()=>{
           v.fps=!v.fps;
+          S()
+          });
+        /* Stage 74: kalite profili (Otomatik: FPS + ısıya göre kademeli) ve performans monitörü */
+        {
+          const GQ=['auto',0,1,2],GQN=['Otomatik','Performans','Dengeli','Kalite'],gi=Math.max(0,GQ.indexOf(v.gq==null?'auto':v.gq));
+          const gq=k=>{v.gq=GQ[k];S();if(v.gq!=='auto')Quality.set(v.gq,null);Diag.toast('Kalite profili: '+GQN[k]+(v.gq==='auto'?' (şu an '+Quality.NAMES[Quality.level]+')':''),'var(--ok)',2200)};
+          step('Kalite profili',GQN[gi],()=>gq((gi+3)%4),()=>gq((gi+1)%4))
+        }
+        sw('Performans monitörü (debug)',!!v.pdbg,()=>{
+          v.pdbg=!v.pdbg;
           S()
           });
         sw('GPU tarayıcı (video, deneysel)',v.gpu!==false,()=>{
@@ -4023,7 +4173,7 @@ button:focus-visible{outline:2px solid var(--sec);outline-offset:2px}button:disa
           })
       }
       else if(u.tab===3){
-        rowsCard(14);
+        rowsCard(16);
         sw('El takibi',Hand.on,()=>Hand.on?Hand.stop():Hand.start());
         step('Kamera',v.hcam==='user'?'Ön':'Arka',()=>{
           v.hcam=v.hcam==='user'?'environment':'user';
@@ -4043,6 +4193,17 @@ button:focus-visible{outline:2px solid var(--sec);outline-offset:2px}button:disa
           v.hdraw=!v.hdraw;
           S();
           if(!v.hdraw)Hand.clr()
+          });
+        /* Stage 74: el görünümü ve native (C++) süzgeç */
+        {
+          const HV=['kontur','ikisi','kumanda'],HVN=['Parmak konturu','Kontur + kumanda','Kumanda'],hi=Math.max(0,HV.indexOf(Hand.view()));
+          const hv=k=>{v.hview=HV[k];S();Hand.hide3D();Hand.draw()};
+          step('El görünümü',HVN[hi],()=>hv((hi+2)%3),()=>hv((hi+1)%3))
+        }
+        sw('Native el süzgeci (C++)',v.hnf!==false,()=>{
+          v.hnf=v.hnf===false;
+          S();
+          if(Hand.on&&Hand.native)try{NHand.sync().catch(()=>{})}catch(e){}
           });
         sw('Turbo el (anında + gecikme telafisi)',v.hfast!==false,()=>{
           v.hfast=v.hfast===false;
@@ -5443,10 +5604,11 @@ button:focus-visible{outline:2px solid var(--sec);outline-offset:2px}button:disa
         if(p){this.pend=null;clearTimeout(p.to);if(a[1]==='ready')p.res(a[2]||'');else p.rej(new Error(a.slice(2).join('|')||'native kamera hatası'))}
         else if(a[1]==='err'&&Hand.on&&Hand.native)Hand.nativeFailed(a.slice(2).join('|'))
       }else if(a[1]==='fps'){this.camFps=+a[2]||0;this.camSize=a[3]||''}
+      else if(a[1]==='res'){this.camSize=a[2]||this.camSize;try{Diag.toast('El takibi çözünürlüğü '+a[2]+' (çıkarım '+a[3]+' ms)','var(--warn)',2500)}catch(e){}}
     },
     opts(w){
       const l=!!Hand.lite;
-      return {fac:Settings.v.hcam||'environment',prev:w.prev,hand:w.hand,hands:Settings.v.hone?1:2,q:clamp(Settings.v.hcq|0,0,2),lite:l,det:l?.45:.42,pres:l?.45:.42,trk:l?.4:.4}
+      return {fac:Settings.v.hcam||'environment',prev:w.prev,hand:w.hand,hands:Settings.v.hone?1:2,q:clamp(Settings.v.hcq|0,0,2),lite:l,det:l?.45:.42,pres:l?.45:.42,trk:l?.4:.4,nf:Settings.v.hnf!==false}
     },
     send(o){
       return new Promise((res,rej)=>{
@@ -5684,13 +5846,13 @@ button:focus-visible{outline:2px solid var(--sec);outline-offset:2px}button:disa
     k.f.copy(k.t).sub(k.p).normalize();
     k.q.setFromUnitVectors(k.zb,k.f);
     k.r.setFromAxisAngle(k.zb,o.right?-.25:.25);k.q.multiply(k.r);
-    c.g.position.copy(k.p);c.g.quaternion.copy(k.q);c.g.scale.set(o.right?sc:-sc,sc,sc);c.g.visible=true;c.vis=true;
+    c.g.position.copy(k.p);c.g.quaternion.copy(k.q);c.g.scale.set(o.right?sc:-sc,sc,sc);c.g.visible=o.body!==false;c.vis=true;
     if(c.pin!==o.pinch){
       c.pin=o.pinch;c.trig.position.z=o.pinch?-.011:-.016;
       c.trigMat.emissive.setHex(o.pinch?0x19d3c5:0x2a2c31);c.dotMat.color.setHex(o.pinch?0x19d3c5:0xffffff)
     }
     if(o.cursor){
-      k.d.copy(k.f).multiplyScalar(.07*sc).add(k.p);            /* ışının çıktığı uç */
+      k.d.copy(k.f).multiplyScalar(o.body===false?0:.07*sc).add(k.p);            /* ışının çıktığı uç */
       c.ray.position.copy(k.d);
       k.f.copy(k.t).sub(k.d);const L=k.f.length()||1;k.f.multiplyScalar(1/L);
       c.ray.scale.z=L;c.ray.quaternion.setFromUnitVectors(k.zf,k.f);c.ray.visible=true;
@@ -5720,6 +5882,7 @@ button:focus-visible{outline:2px solid var(--sec);outline-offset:2px}button:disa
     hide3D(){
       let ch=false;
       for(const c of this.c3)if(c&&c.vis){nexCtrl3DHide(c);ch=true}
+      if(HandContour.hideAll())ch=true;
       if(ch)Scene.dirty=true
     },
     async start(){
@@ -5823,21 +5986,28 @@ button:focus-visible{outline:2px solid var(--sec);outline-offset:2px}button:disa
     },
     /* Native sonuç: R|yaş_ms|çıkarım_ms|elSayısı|Etiket,skor,x,y,z,... (el başına bir blok). */
     onNative(s){
-      const a=s.split('|'),n=+a[3]||0,now=performance.now(),lms=[],hds=[];
+      const a=s.split('|'),n=+a[3]||0,now=performance.now(),lms=[],hds=[],kin=[];
+      /* Stage 74: el bloklarından sonra sırası sabit olmayan ek bloklar: K (C++ kinematiği, el başına), F (landmark'lar
+         native'de süzüldü), T (yakalama), P (gönderim). */
+      let tc=null,pc=null,nf=false;const ks=[];
+      for(let j=4+n;j<a.length;j++){
+        const g=a[j],c0=g.charCodeAt(0);
+        if(c0===84)tc=g;else if(c0===80)pc=g;else if(c0===75)ks.push(g);else if(c0===70)nf=true
+      }
       for(let i=0;i<n;i++){
         const b=a[4+i];if(!b)continue;
         const f=b.split(','),pts=[];
         for(let k=2;k+2<f.length;k+=3)pts.push({x:+f[k],y:+f[k+1],z:+f[k+2]});
         if(pts.length<21)continue;
-        lms.push(pts);hds.push([{categoryName:f[0],score:+f[1]}])
+        lms.push(pts);hds.push([{categoryName:f[0],score:+f[1]}]);
+        kin.push(ks.length===n?ks[i]:null)
       }
       let age=Math.min(250,Math.max(0,+a[1]||0));const inf=Math.max(0,+a[2]||0);
       let t0=now-age;
       /* Stage 45: yakalama zamanı (T) ve gönderim anı (P) native saatindedir (elapsedRealtime, ms). Saat farkı
          o=min(alış−P) ile bulunur (aktarım gecikmesinin en küçüğü ≈ 0 kabul edilir); yakalama = T + o.
          Böylece zaman damgası UI/kuyruk gecikme dalgalanmasıyla titremez, yaş da aktarım süresini kapsar. */
-      const tc=a[4+n],pc=a[5+n];
-      if(tc&&pc&&tc.charCodeAt(0)===84&&pc.charCodeAt(0)===80){
+      if(tc&&pc){
         const cap=+tc.slice(2),post=+pc.slice(2);
         if(cap>0&&post>0){
           const d=now-post;let o=this.nOff;
@@ -5864,7 +6034,8 @@ button:focus-visible{outline:2px solid var(--sec);outline-offset:2px}button:disa
         const el=$('#hstat');if(el)el.textContent=(this.status||'')+' · '+txt;
         if(!this.sToast){this.sToast=1;try{Diag.toast(txt,'var(--ok)',7000)}catch(e){}}
       }
-      this.ingest({landmarks:lms,handedness:hds},t0,now)
+      this.lat=age;
+      this.ingest({landmarks:lms,handedness:hds,kin:kin,nf:nf&&ks.length===n},t0,now)
     },
     nativeFailed(msg){
       Diag.toast('Native el takibi durdu: '+msg,'var(--warn)',5000);
@@ -6096,10 +6267,14 @@ button:focus-visible{outline:2px solid var(--sec);outline-offset:2px}button:disa
         Cam.yaw+=dy;
         Cam.pitch=clamp(Cam.pitch+dp,-lim,lim)
       }
-      this.glide(t,false)
+      this.glide(t,false);
+      /* solma sürüyorsa ya da görünen bir elin ölçümü bayatlamak üzereyse çiz (el durgunken boşuna çizim yok) */
+      if(this.on&&(this.fading||(this.fadeAt&&performance.now()>=this.fadeAt)))this.draw()
     },
+    _act:[],
     glide(t,force){
-      const act=this.slots.filter(s=>s.on&&s.hasT);
+      const act=this._act;act.length=0;
+      for(const s of this.slots)if(s.on&&s.hasT)act.push(s);
       if(!act.length)return;
       if(this.fast()){
         /* Turbo mod (Stage 43): ölçüm gecikmesi (yakalama + çıkarım + aktarım) kadar ileri tahmin yapılır, böylece el
@@ -6169,25 +6344,73 @@ button:focus-visible{outline:2px solid var(--sec);outline-offset:2px}button:disa
         if(s&&s.on&&s.mode==='ui')Input.move(this.rayOf(s))
       }
     },
+    /* Stage 74 — el görünümü: 'kontur' (varsayılan; içi boş siyah parmak konturları + işaret ışını),
+       'ikisi' (kontur + Stage 72 kontrolcü), 'kumanda' (yalnızca Stage 72 kontrolcü). */
+    view(){const v=Settings.v.hview;return v==='kumanda'||v==='ikisi'?v:'kontur'},
+    /* Native kamera arka planı (PreviewView, FILL_CENTER) analiz karesinden farklı en-boy oranında kırpılır.
+       Kontur gerçek elin ÜSTÜNE otursun ve dokunulan yer görünen yer olsun diye analiz koordinatları ekrandaki
+       önizleme koordinatlarına eşlenir. Arka plan yokken eşleme yoktur (tüm kamera görüş alanı ekrana yayılır). */
+    mk:[1,1],
+    mapUpd(){
+      let kx=1,ky=1;
+      if(Pass.on&&Pass.nat&&!Stereo.on){
+        const sz=/^(\d+)x(\d+)$/.exec(NHand.camSize||''),aA=sz&&+sz[2]>0?Math.max(+sz[1],+sz[2])/Math.min(+sz[1],+sz[2]):4/3;
+        const aP=[4/3,16/9,16/9][clamp(Settings.v.hcq|0,0,2)],aS=Math.max(1e-3,innerWidth/Math.max(1,innerHeight));
+        if(aP>=aA)ky*=aP/aA;else kx*=aA/aP;                 /* analiz → önizleme (aynı yatay görüş alanı) */
+        if(aS>aP)ky*=aS/aP;else kx*=aP/aS                  /* önizleme → ekran (kaplayacak şekilde kırpma) */
+      }
+      this.mk[0]=kx;this.mk[1]=ky
+    },
+    mapX(x){return (x-.5)*this.mk[0]+.5},
+    mapY(y){return (y-.5)*this.mk[1]+.5},
+    _cp:null,
     draw(){
-      if(!Settings.v.hdraw||Game.on||(window.Gorilla&&Gorilla.on)){
+      const gor=!!(window.Gorilla&&Gorilla.on),view=this.view();
+      if(!Settings.v.hdraw||Game.on||(gor&&view==='kumanda')){
         this.clr();
         return
       }
       const cam=Cam.cam;
       if(!cam||typeof THREE==='undefined')return;
-      const H=innerHeight,W=innerWidth,Wm=(Stereo.on&&!XR.session)?W/2:W,mir=this.mirror;
-      let any=false;
+      this.mapUpd();
+      const H=innerHeight,W=innerWidth,Wm=(Stereo.on&&!XR.session)?W/2:W,mir=this.mirror,now=performance.now();
+      const useC=view!=='kumanda'&&HandContour.init(THREE,cam),useK=view!=='kontur'&&!gor;
+      const cp=this._cp||(this._cp=Array.from({length:21},()=>({x:0,y:0})));
+      let any=false,fading=false,fadeAt=0;
+      /* tazelik penceresi: ölçüm aralığının ~2.5 katı (30-60 Hz'de 110 ms; takip yavaşlarsa en çok 300 ms) */
+      const fw=clamp((this.resDt||40)*2.5,110,300);
       for(const s of this.slots){
         const c=this.c3[s.id]||(this.c3[s.id]=nexCtrl3D(THREE,cam));
-        if(!s.on||!s.hasT){if(c.vis){nexCtrl3DHide(c);any=true}continue}
-        const p=s.dq,a=p[0],b=p[9],ax=mir?1-a.x:a.x,bx=mir?1-b.x:b.x,
-          mx=(ax+bx)*.5,my=(a.y+b.y)*.5,sr=Math.hypot((ax-bx)*Wm,(a.y-b.y)*H)/H,
+        if(!s.on||!s.hasT){
+          if(c.vis){nexCtrl3DHide(c);any=true}
+          if(HandContour.hide(s.id))any=true;
+          s.ca=0;continue
+        }
+        const p=s.dq,a=p[0],b=p[9],ax=this.mapX(mir?1-a.x:a.x),bx=this.mapX(mir?1-b.x:b.x),ay=this.mapY(a.y),by=this.mapY(b.y),
+          mx=(ax+bx)*.5,my=(ay+by)*.5,sr=Math.hypot((ax-bx)*Wm,(ay-by)*H)/H,
           hov=!!(s.hit||s.mode==='ui');
-        nexCtrl3DPlace(THREE,c,cam,{nx:mx*2-1,ny:-(my*2-1),sr:sr,cx:s.dsx*2-1,cy:-(s.dsy*2-1),
-          dist:s.hit?s.hit.distance:0,cursor:hov,pinch:!!s.pr,right:(s.label==='Right')!==!!this.ctrlFlip});
-        any=true
+        /* Kontur saydamlığı: taze ölçümde 1 (güvene göre en az .55), ölçüm kesilince fw + ~120 ms'de söner; kayıptan
+           sonra yeniden bulunan el yeni konumunda belirir (eski konumdan kayarak gelmez). */
+        const fresh=now-(s.seenAt||0)<fw,conf=s.conf==null?1:s.conf,tgt=fresh?.55+.45*clamp((conf-.25)/.45,0,1):0;
+        const k=1-Math.exp(-Math.min(.05,Math.max(.001,(now-(s.cat||now))/1000))/(tgt>(s.ca||0)?.03:.05));
+        s.cat=now;s.ca=(s.ca||0)+(tgt-(s.ca||0))*k;
+        if(Math.abs(tgt-s.ca)>.01)fading=true;
+        else if(fresh&&s.ca>.02){const ex=(s.seenAt||0)+fw+2;if(!fadeAt||ex<fadeAt)fadeAt=ex}
+        if(useC&&s.ca>.02){
+          for(let i=0;i<21;i++){const q=p[i];cp[i].x=this.mapX(mir?1-q.x:q.x);cp[i].y=this.mapY(q.y)}
+          const d=Math.min(.8,Math.max(.4,.12/Math.max(sr,.04)));
+          HandContour.place(s.id,cp,d,cam,clamp(Math.min(W,H)/360,2,4.5),s.ca);
+          any=true
+        }else if(HandContour.hide(s.id))any=true;
+        if(useK||(useC&&hov&&!gor)){
+          /* kontur modunda gövdesiz: ışın işaret parmağı ucundan çıkar */
+          const tip=useK?null:cp[8];
+          nexCtrl3DPlace(THREE,c,cam,{nx:tip?tip.x*2-1:mx*2-1,ny:tip?-(tip.y*2-1):-(my*2-1),sr:sr,cx:s.dsx*2-1,cy:-(s.dsy*2-1),
+            dist:s.hit?s.hit.distance:0,cursor:hov,pinch:!!s.pr,right:(s.label==='Right')!==!!this.ctrlFlip,body:useK});
+          any=true
+        }else if(c.vis){nexCtrl3DHide(c);any=true}
       }
+      this.fading=fading;this.fadeAt=fadeAt;
       if(any)Scene.dirty=true
     },
     lost(){
@@ -6286,9 +6509,11 @@ button:focus-visible{outline:2px solid var(--sec);outline-offset:2px}button:disa
       for(let i=0;i<Math.min(2,lm.length);i++){
         const raw=lm[i];
         if(!Array.isArray(raw)||raw.length<21)continue;
-        const h=hd[i]&&hd[i][0];
+        const h=hd[i]&&hd[i][0],kb=r.kin&&r.kin[i],K=kb?HandFeat.parseK(kb):null;
         if((h?h.score:1)<.12)continue;
-        dets.push({raw,label:(h&&h.categoryName)||'',cx:(raw[0].x+raw[9].x)/2,cy:(raw[0].y+raw[9].y)/2})
+        /* Stage 74: native güveni çok düşükse (bozuk iskelet / çok uzak) bu ölçüm etkileşim üretmez */
+        if(K&&K.k[0]<.08&&!(K.flags&HandFeat.F.REJ))continue;
+        dets.push({raw,label:(h&&h.categoryName)||'',score:h?h.score:1,K,nf:!!(r.nf&&K),cx:(raw[0].x+raw[9].x)/2,cy:(raw[0].y+raw[9].y)/2})
       }
       const S=this.slots;
       S.forEach(s=>{s.d=null});
@@ -6349,8 +6574,11 @@ button:focus-visible{outline:2px solid var(--sec);outline-offset:2px}button:disa
     /* Tek elin yeni ölçümü: çimdik, imleç, süzgeçler, hız. */
     upd(s,d,t0,panels){
       const raw=d.raw;
-      s.raw=raw;s.miss=0;s.missAt=0;s.lastSeen=t0;
+      s.raw=raw;s.miss=0;s.missAt=0;s.lastSeen=t0;s.seenAt=performance.now();s.score=d.score;
       if(d.label)s.label=d.label;
+      /* Stage 74: C++ özellikleri bu ölçüme ait (bükülme, çimdik, avuç yönü, hız, güven) */
+      if(d.K){s.kin=d.K.k;s.kf=d.K.flags;s.kinAt=t0;s.conf=d.K.k[0];if(d.K.flags&HandFeat.F.REACQ)s.reacq=s.seenAt}
+      else{s.kin=null;s.conf=d.score==null?1:d.score}
       s.cx=(raw[0].x+raw[9].x)/2;s.cy=(raw[0].y+raw[9].y)/2;
       const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
       const size=Math.max(dist(raw[0],raw[9]),dist(raw[5],raw[17])*1.15)||.1;
@@ -6369,7 +6597,7 @@ button:focus-visible{outline:2px solid var(--sec);outline-offset:2px}button:disa
         px=s.pa.ox+(midx-s.pa.mx);py=s.pa.oy+(midy-s.pa.my)
       }
       s.pr=pr;
-      const x=this.mirror?1-px:px,y=py;
+      const x=this.mapX(this.mirror?1-px:px),y=this.mapY(py);
       s.x=x;s.y=y;
       const rc=this.hitRC,pv=this.pv2||(this.pv2=new THREE.Vector2());
       rc.setFromCamera(pv.set(x*2-1,-(y*2-1)),Cam.cam);
@@ -6377,14 +6605,18 @@ button:focus-visible{outline:2px solid var(--sec);outline-offset:2px}button:disa
       const ik=1/clamp(size,.05,.6); /* süzgeç hızı el boyuna göre ölçer */
       /* Stage 43: her eklemin süzgeçli hızı (ekran/sn) — glide() hızlı modda gecikmeyi telafi etmek için kullanır. */
       const dtv=s.pst?(t0-s.pst)/1000:0,okv=dtv>=.004&&dtv<.25;
+      const nf=d.nf; /* landmark'lar native'de zaten uyarlanır süzgeçten geçti: ikinci süzgeç yalnızca gecikme ekler */
       for(let i=0;i<21;i++){
         const q=s.q[i],ox=q.x,oy=q.y;
-        q.x=s.lf[i*2].f(raw[i].x,t0,ik);
-        q.y=s.lf[i*2+1].f(raw[i].y,t0,ik);
+        if(nf){q.x=raw[i].x;q.y=raw[i].y;s.lf[i*2].reset();s.lf[i*2+1].reset()}
+        else{
+          q.x=s.lf[i*2].f(raw[i].x,t0,ik);
+          q.y=s.lf[i*2+1].f(raw[i].y,t0,ik)
+        }
         if(okv){s.lvx[i]+=((q.x-ox)/dtv-s.lvx[i])*.6;s.lvy[i]+=((q.y-oy)/dtv-s.lvy[i])*.6}
         else{s.lvx[i]=0;s.lvy[i]=0}
       }
-      const nx=s.fx.f(x,t0,ik),ny=s.fy.f(y,t0,ik);
+      const nx=nf?x:s.fx.f(x,t0,ik),ny=nf?y:s.fy.f(y,t0,ik);
       if(s.pst){
         const dt=Math.max(.004,(t0-s.pst)/1000);
         s.vx+=((nx-s.psx)/dt-s.vx)*.55;
@@ -6456,6 +6688,172 @@ button:focus-visible{outline:2px solid var(--sec);outline-offset:2px}button:disa
       if(id!==this.hv){this.hoverEnd();this.hv=id}
       if(pk)Input.hover(this.rayOf(pk),'hand')
     }
+  };
+  /* ---------- Stage 74: el özellikleri (parmak bükülmesi, çimdik, avuç yönü, hız, güven) ----------
+     Native yolda bu değerler C++'ta (app/src/main/cpp/hand_kinematics.cpp) hesaplanır ve mesajın "K" bloğuyla gelir.
+     Worker (tarayıcı MediaPipe) yolunda ya da native kitaplık yüklenemediğinde AYNI formüller burada JS ile hesaplanır,
+     böylece üst katmanlar (kontur, goril oyunu, jestler) iki yolda da aynı veriyi görür.
+     Dizi düzeni (25 sayı): 0 güven, 1 avuç boyu, 2..6 bükülme (başparmak→serçe, 0 düz..1 bükük),
+     7..10 çimdik (başparmak ucu→işaret/orta/yüzük/serçe ucu ÷ avuç boyu), 11..14 komşu parmak açıklığı (rad),
+     15..17 avuç normali, 18..21 el dönüşü (kuaterniyon x,y,z,w), 22..24 hız (avuç/sn x,y; boyut değişimi 1/sn). */
+  const HandFeat={
+    F:{VALID:1,REJ:2,REACQ:4,FIST:8,OPEN:16,PINCH:32,FAR:64,PARTIAL:128,RIGHT:256},
+    N:25,
+    CH:[[1,2,3,4],[5,6,7,8],[9,10,11,12],[13,14,15,16],[17,18,19,20]],
+    /* "K,yuva,bayrak,25 sayı" → {slot,flags,k:Float32Array(25)} (bozuksa null) */
+    parseK(seg){
+      const f=seg.split(',');
+      if(f.length<3+this.N)return null;
+      const k=new Float32Array(this.N);
+      for(let i=0;i<this.N;i++){const v=+f[3+i];k[i]=Number.isFinite(v)?v:0}
+      return{slot:f[1]|0,flags:f[2]|0,k}
+    },
+    _v:new Float64Array(30),
+    /* lm: 21 {x,y,z}; a: en-boy oranı (x ve z ölçeği); out: Float32Array(25). Dönen: bayraklar. C++ ile aynı formüller. */
+    compute(lm,a,score,right,out,prevPinch){
+      const P=(i,o)=>{const p=lm[i];o[0]=p.x*a;o[1]=p.y;o[2]=(p.z||0)*a;return o};
+      const A=[0,0,0],B=[0,0,0],C=[0,0,0],D=[0,0,0],E=[0,0,0],W=[0,0,0];
+      const sub=(u,v,o)=>{o[0]=u[0]-v[0];o[1]=u[1]-v[1];o[2]=u[2]-v[2];return o};
+      const ang=(u,v)=>{const lu=Math.hypot(u[0],u[1],u[2]),lv=Math.hypot(v[0],v[1],v[2]);if(lu<1e-9||lv<1e-9)return 0;return Math.acos(clamp((u[0]*v[0]+u[1]*v[1]+u[2]*v[2])/(lu*lv),-1,1))};
+      const u1=[0,0,0],u2=[0,0,0];
+      const s1=Math.hypot((lm[9].x-lm[0].x)*a,lm[9].y-lm[0].y),s2=Math.hypot((lm[5].x-lm[17].x)*a,lm[5].y-lm[17].y)*1.15,size=Math.max(s1,s2),inv=size>1e-6?1/size:0;
+      out[1]=size;
+      P(0,W);
+      for(let f=0;f<5;f++){
+        const c=this.CH[f];P(c[0],A);P(c[1],B);P(c[2],C);P(c[3],D);
+        let sum=ang(sub(B,A,u1),sub(C,B,u2))+ang(sub(C,B,u1),sub(D,C,u2));
+        if(f===0){sum+=.5*ang(sub(A,W,u1),sub(B,A,u2));out[2]=clamp((sum-.25)/1.6,0,1)}
+        else{sum+=ang(sub(A,W,u1),sub(B,A,u2));out[2+f]=clamp((sum-.35)/3.6,0,1)}
+      }
+      P(4,E);
+      for(let f=1;f<5;f++){P(this.CH[f][3],D);out[6+f]=Math.hypot(D[0]-E[0],D[1]-E[1],D[2]-E[2])*inv}
+      for(let f=0;f<4;f++){
+        P(this.CH[f][3],D);P(this.CH[f][f===0?1:0],A);sub(D,A,u1);
+        P(this.CH[f+1][3],D);P(this.CH[f+1][0],A);sub(D,A,u2);
+        out[11+f]=ang(u1,u2)
+      }
+      /* avuç çerçevesi */
+      P(5,A);P(9,B);P(17,C);
+      const y=sub(B,W,[0,0,0]),yl=Math.hypot(y[0],y[1],y[2])||1;y[0]/=yl;y[1]/=yl;y[2]/=yl;
+      const x=sub(A,C,[0,0,0]),xd=x[0]*y[0]+x[1]*y[1]+x[2]*y[2];x[0]-=y[0]*xd;x[1]-=y[1]*xd;x[2]-=y[2]*xd;
+      const xl=Math.hypot(x[0],x[1],x[2])||1;x[0]/=xl;x[1]/=xl;x[2]/=xl;
+      const z=[x[1]*y[2]-x[2]*y[1],x[2]*y[0]-x[0]*y[2],x[0]*y[1]-x[1]*y[0]],sg=right?-1:1;
+      out[15]=z[0]*sg;out[16]=z[1]*sg;out[17]=z[2]*sg;
+      const m00=x[0],m01=y[0],m02=z[0],m10=x[1],m11=y[1],m12=z[1],m20=x[2],m21=y[2],m22=z[2],tr=m00+m11+m22;
+      let qx,qy,qz,qw;
+      if(tr>0){const S=Math.sqrt(tr+1)*2;qw=.25*S;qx=(m21-m12)/S;qy=(m02-m20)/S;qz=(m10-m01)/S}
+      else if(m00>m11&&m00>m22){const S=Math.sqrt(1+m00-m11-m22)*2;qw=(m21-m12)/S;qx=.25*S;qy=(m01+m10)/S;qz=(m02+m20)/S}
+      else if(m11>m22){const S=Math.sqrt(1+m11-m00-m22)*2;qw=(m02-m20)/S;qx=(m01+m10)/S;qy=.25*S;qz=(m12+m21)/S}
+      else{const S=Math.sqrt(1+m22-m00-m11)*2;qw=(m10-m01)/S;qx=(m02+m20)/S;qy=(m12+m21)/S;qz=.25*S}
+      out[18]=qx||0;out[19]=qy||0;out[20]=qz||0;out[21]=Number.isFinite(qw)?qw:1;
+      /* güven: skor × kadraj içinde olma × boyut */
+      let outside=0;
+      for(let i=0;i<21;i++){const p=lm[i];if(p.x<-.02||p.x>1.02||p.y<-.02||p.y>1.02)outside++}
+      let fl=this.F.VALID|(right?this.F.RIGHT:0),conf=clamp(score,0,1)*(1-.6*outside/21);
+      if(outside)fl|=this.F.PARTIAL;
+      if(size<.06){fl|=this.F.FAR;conf*=clamp(size/.06,0,1)}
+      out[0]=conf;
+      const c4=(out[3]+out[4]+out[5]+out[6])/4,pd=out[7];
+      if(c4>.62)fl|=this.F.FIST;
+      if(c4<.22&&out[2]<.5)fl|=this.F.OPEN;
+      if(prevPinch?pd<.46:pd<.34)fl|=this.F.PINCH;
+      return fl
+    },
+    /* Bir el yuvasının özellikleri → s.kv (25 sayı) ve s.kf (bayraklar). Native K bu ölçüme aitse doğrudan o kullanılır;
+       değilse süzülmüş landmark'lardan JS ile hesaplanır (ölçüm başına en çok bir kez). */
+    of(s,aspect){
+      if(!s||!s.on||!s.hasT)return null;
+      if(s.kin&&s.kinAt===s.lastSeen){s.kv=s.kin;return s}
+      if(s.featAt===s.lastSeen&&s.kv)return s;
+      const out=s.kjs||(s.kjs=new Float32Array(this.N)),q=s.q,raw=s.raw;
+      const lm=s._flm||(s._flm=Array.from({length:21},()=>({x:0,y:0,z:0})));
+      for(let i=0;i<21;i++){lm[i].x=q[i].x;lm[i].y=q[i].y;lm[i].z=raw&&raw[i]?(raw[i].z||0):0}
+      s.kf=this.compute(lm,aspect||4/3,s.score==null?1:s.score,s.label==='Right',out,s.kf?(s.kf&this.F.PINCH):0);
+      s.kv=out;s.featAt=s.lastSeen;
+      return s
+    }
+  };
+  /* ---------- Stage 74: içi boş siyah parmak konturları (GPU, işaretli uzaklık alanı) ----------
+     Her el için TEK bir dörtgen (2 üçgen) çizilir; tüm şekil fragment shader'da analitik olarak hesaplanır:
+       • her parmak kendi eklem zincirinin (taban→eklem→eklem→uç) inceltilmiş kapsüllerinin birleşimi → AYRI kontur;
+         parmaklar birbirine değse de tek bir lekeye dönüşmez (her parmağın halkası ayrı çizilir),
+       • avuç: bilek + parmak tabanlarından çokgen, daha ince çizgi; parmakların içinden geçen kısmı çizilmez,
+       • yalnızca |uzaklık| < kalınlık/2 olan pikseller boyanır → içi tamamen boş (kamera görüntüsü / sahne görünür),
+       • kenar yumuşatma piksel boyutundan (fwidth) → kalınlık her mesafede ve iki gözde aynı ve net.
+     Kare başına CPU işi: 21 nokta + 21 yarıçap uniform'u yazmak (ayırma yok). Geometri/malzeme bir kez oluşturulur.
+     Dörtgen kameranın çocuğudur: stereo modda iki göze de aynı (tutarlı) çizilir. Parmak başına sınır çemberiyle
+     pikselin uzak olduğu parmaklar atlanır (GPU maliyeti el kutusu × birkaç parmak). */
+  const HandContour={
+    ok:null,geo:null,m:[],
+    VS:'uniform vec2 uC;uniform vec2 uS;uniform float uD;varying vec2 vL;'+
+      'void main(){vec2 p=uC+position.xy*uS;vL=p;gl_Position=projectionMatrix*modelViewMatrix*vec4(p,-uD,1.0);}',
+    FS:[
+      'uniform vec2 uP[21];uniform float uR[21];uniform vec3 uFB[5];uniform float uTh;uniform float uPTh;uniform float uA;uniform vec3 uCol;varying vec2 vL;',
+      'float cap(vec2 p,vec2 a,vec2 b,float ra,float rb){vec2 pa=p-a,ba=b-a;float h=clamp(dot(pa,ba)/max(dot(ba,ba),1e-12),0.0,1.0);return length(pa-ba*h)-mix(ra,rb,h);}',
+      'float ring(float d,float th,float w){return 1.0-smoothstep(th*0.5-w,th*0.5+w,abs(d));}',
+      'float segd(vec2 p,vec2 a,vec2 b){vec2 pa=p-a,ba=b-a;float h=clamp(dot(pa,ba)/max(dot(ba,ba),1e-12),0.0,1.0);return length(pa-ba*h);}',
+      /* GLSL ES 1.0: uniform dizisi indeksleri sabit olmalı → parmaklar açık yazılır */
+      '#define FING(o,a,b,c,e,k) if(distance(p,uFB[k].xy)<uFB[k].z){float d=min(min(cap(p,uP[a],uP[b],uR[a],uR[b]),cap(p,uP[b],uP[c],uR[b],uR[c])),cap(p,uP[c],uP[e],uR[c],uR[e]));o=max(o,ring(d,uTh,w));inF=inF||d<0.0;}',
+      'void main(){',
+      ' vec2 p=vL;float w=length(fwidth(vL))*0.75;float o=0.0;bool inF=false;',
+      ' FING(o,1,2,3,4,0) FING(o,5,6,7,8,1) FING(o,9,10,11,12,2) FING(o,13,14,15,16,3) FING(o,17,18,19,20,4)',
+      /* avuç çokgeni: 0-1-5-9-13-17 (ince çizgi), parmak içinde kalan parçası çizilmez */
+      ' if(!inF){float dp=min(min(min(segd(p,uP[0],uP[1]),segd(p,uP[1],uP[5])),min(segd(p,uP[5],uP[9]),segd(p,uP[9],uP[13]))),min(segd(p,uP[13],uP[17]),segd(p,uP[17],uP[0])));',
+      '  o=max(o,0.8*(1.0-smoothstep(uPTh*0.5-w,uPTh*0.5+w,dp)));}',
+      ' float al=o*uA;if(al<0.01)discard;gl_FragColor=vec4(uCol,al);',
+      '}'].join('\n'),
+    /* yarıçap çarpanları (avuç uzunluğuna göre): başparmak kalın, uçlara doğru incelir, serçe ince */
+    RK:[.13,.135,.12,.105,.092, .108,.097,.087,.078, .11,.099,.089,.08, .104,.094,.085,.076, .092,.083,.075,.068],
+    init(T,parent){
+      if(this.ok!==null)return this.ok;
+      try{
+        this.geo=new T.PlaneGeometry(2,2);
+        for(let i=0;i<2;i++){
+          const P=[],R=new Float32Array(21),FB=[];
+          for(let k=0;k<21;k++)P.push(new T.Vector2());
+          for(let k=0;k<5;k++)FB.push(new T.Vector3());
+          const mat=new T.ShaderMaterial({
+            uniforms:{uP:{value:P},uR:{value:R},uFB:{value:FB},uTh:{value:.002},uPTh:{value:.0012},uA:{value:0},uCol:{value:new T.Color(0,0,0)},
+              uC:{value:new T.Vector2()},uS:{value:new T.Vector2(.1,.1)},uD:{value:.5}},
+            vertexShader:this.VS,fragmentShader:this.FS,transparent:true,depthTest:false,depthWrite:false,
+            extensions:{derivatives:true}});
+          const mesh=new T.Mesh(this.geo,mat);
+          mesh.frustumCulled=false;mesh.renderOrder=998;mesh.visible=false;mesh.matrixAutoUpdate=false;
+          parent.add(mesh);
+          this.m.push({mesh,mat,U:mat.uniforms,a:0,vis:false});
+        }
+        this.ok=true
+      }catch(e){console.warn('El konturu kurulamadı',e);this.ok=false}
+      return this.ok
+    },
+    /* i: yuva; pts: 21 nokta ekran-normalize (x,y ∈ 0..1, y aşağı); d: düzlem derinliği (m); cam: perspektif kamera;
+       pxTh: parmak çizgi kalınlığı (CSS piksel); alpha: 0..1 */
+    place(i,pts,d,cam,pxTh,alpha){
+      const c=this.m[i];if(!c)return;
+      const e=cam.projectionMatrix.elements,U=c.U,P=U.uP.value,R=U.uR.value,FB=U.uFB.value,H=Math.max(1,innerHeight);
+      const sx=d/e[0],sy=d/e[5];
+      let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
+      for(let k=0;k<21;k++){
+        const q=pts[k],x=(q.x*2-1)*sx,y=-(q.y*2-1)*sy;P[k].set(x,y);
+        if(x<x0)x0=x;if(x>x1)x1=x;if(y<y0)y0=y;if(y>y1)y1=y
+      }
+      const L=Math.max(Math.hypot(P[9].x-P[0].x,P[9].y-P[0].y),Math.hypot(P[5].x-P[17].x,P[5].y-P[17].y)*1.15,1e-4);
+      for(let k=0;k<21;k++)R[k]=this.RK[k]*L;
+      const mpp=2*sy/H,th=Math.max(1,pxTh)*mpp;            /* metre/piksel (bu derinlikte) */
+      U.uTh.value=th;U.uPTh.value=th*.6;
+      const CH=HandFeat.CH;
+      for(let f=0;f<5;f++){
+        const ch=CH[f],a=P[ch[0]],b=P[ch[3]];
+        let r=0;for(let j=0;j<4;j++){const q=P[ch[j]];r=Math.max(r,Math.hypot(q.x-(a.x+b.x)/2,q.y-(a.y+b.y)/2)+R[ch[j]])}
+        FB[f].set((a.x+b.x)/2,(a.y+b.y)/2,r+th*2+mpp*2)
+      }
+      const pad=L*.16+th*2+mpp*2;
+      U.uC.value.set((x0+x1)/2,(y0+y1)/2);U.uS.value.set((x1-x0)/2+pad,(y1-y0)/2+pad);U.uD.value=d;
+      U.uA.value=alpha;c.a=alpha;
+      if(!c.vis){c.mesh.visible=true;c.vis=true}
+    },
+    hide(i){const c=this.m[i];if(c&&c.vis){c.mesh.visible=false;c.vis=false;c.a=0;return true}return false},
+    hideAll(){let ch=false;for(let i=0;i<this.m.length;i++)ch=this.hide(i)||ch;return ch}
   };
   /* ---------- Uygulama ---------- */
   const Sys={
@@ -8591,13 +8989,17 @@ const PS=[
         T2('saver','Düşük güç modu','Kare hızını sınırlar');
         T2('shz','Android uygulamaları VR penceresinde','Shizuku gerekir; kapalıyken normal ekranda açılır');
         T2('fps','FPS sayacı');
-        T2('hdraw','El çizimi','Elin ekranda görünmesi',on=>{if(!on)try{Hand.clr()}catch(e){}})
+        T2('hdraw','El çizimi','Elin ekranda görünmesi',on=>{if(!on)try{Hand.clr()}catch(e){}});
+        T2('pdbg','Performans monitörü','FPS, CPU/GPU süreleri, el gecikmesi, güven, RAM, darboğaz')
       }else if(pg==='calib'){
         w.appendChild(this.row('Bakış yönünü sıfırla',this.btn('Sıfırla',()=>{try{Cam.reset()}catch(e){}this.toast('Bakış yönü sıfırlandı','var(--ok)')}),'Ön tarafı şu an baktığın yön yap'));
         w.appendChild(this.row('Hareket sensörü',this.sw(!!Cam.gyro,()=>{const p=Cam.gyro?Cam.disableGyro():Cam.enableGyro();Promise.resolve(p).then(()=>this.render(),()=>this.render());this.render()},'Hareket sensörü'),'Kafa dönüşünü telefon sensöründen al'));
         w.appendChild(this.row('El takibi',this.sw(!!Hand.on,()=>this.toggleHand(),'El takibi')));
         w.appendChild(this.row('Kamera',this.stp(v.hcam==='user'?'Ön':'Arka',()=>this.camFlip(),()=>this.camFlip(),'Kamera')));
         w.appendChild(this.row('Çimdik hassasiyeti',this.stp((v.hclk||3)+' / 5',()=>this.num('hclk',-1,1,5,1),()=>this.num('hclk',1,1,5,1),'Çimdik hassasiyeti')));
+        {const HV=['kontur','ikisi','kumanda'],HVN=['Parmak konturu','Kontur + kumanda','Kumanda'],hi=Math.max(0,HV.indexOf(Hand.view()));
+          const hv=k=>{this.set('hview',HV[k]);try{Hand.hide3D();Hand.draw()}catch(e){}this.render()};
+          w.appendChild(this.row('El görünümü',this.stp(HVN[hi],()=>hv((hi+2)%3),()=>hv((hi+1)%3),'El görünümü'),'İçi boş siyah parmak konturları ya da kumanda modeli'))}
         w.appendChild(this.row('El yumuşatma',this.stp((v.hsm||3)+' / 5',()=>{this.num('hsm',-1,1,5,1);if(Hand.on)try{Hand.initF()}catch(e){}},()=>{this.num('hsm',1,1,5,1);if(Hand.on)try{Hand.initF()}catch(e){}},'El yumuşatma')));
         const t=this.h('div','tst');t.id='lhs';t.append(this.h('i'),this.h('span',null,'Çimdik testi: önce el takibini aç'));
         w.appendChild(this.row('Canlı test',t))
@@ -8833,6 +9235,7 @@ const PS=[
       // Android WebView bazen ilk çizimi sonraki kareye bırakabiliyor; sahneyi zorla yenile.
       Renderer.resize();
       Scene.dirty=true;
+      Quality.init();Prof.initGpu(Renderer.r);PerfHud.sync();
       try{Renderer.r.render(Scene.scene,Cam.cam)}catch(renderError){console.error('İlk VR çizimi başarısız',renderError)}
       Renderer.r.setAnimationLoop(t=>this.frame(t));
       setInterval(()=>{
@@ -8854,21 +9257,29 @@ const PS=[
       this.lastT=t;
       const dt=Math.min(.1,(t-this.last)/1000||.016);
       this.last=t;
+      /* Stage 74: her bölümün CPU süresi ayrı ölçülür (Prof; monitör: Ayarlar → Performans monitörü) */
+      Prof.begin(t);
       Perf.tick();
+      let p0=Prof.now();
       Input.tick(dt);
+      Prof.add(Prof.INPUT,p0);p0=Prof.now();
       Hand.tick(t);
       HMenu.tick();
+      Prof.add(Prof.HAND,p0);p0=Prof.now();
       Cinema.tick();
       Game.tick();
       Planets.tick();
-      if(window.Gorilla)Gorilla.tick(dt);
+      if(window.Gorilla)Gorilla.tick(dt);   /* fizik ve NPC süreleri Gorilla içinde ayrıca PHYS/NPC'ye yazılır */
+      Prof.add(Prof.GAME,p0);p0=Prof.now();
       W7Desk.sync();
       Cam.update(dt);
       WM.tick(performance.now());
       if(WM.need){
         WM.need=false;
-        WM.panels.forEach(p=>p.visible&&WM.paint(p))
+        for(const p of WM.panels)if(p.visible)WM.paint(p)
       }
+      Prof.add(Prof.UI,p0);
+      PerfHud.tick(t);
       const q=Cam.cam.quaternion,z=Cam.cam.position.z,L=this.lq,ch=q.x!==L[0]||q.y!==L[1]||q.z!==L[2]||q.w!==L[3]||z!==L[4];
       if(ch){
         L[0]=q.x;
@@ -8877,14 +9288,19 @@ const PS=[
         L[3]=q.w;
         L[4]=z
       }
-      if(!(XR.session||ch||Scene.dirty))return;
+      if(!(XR.session||ch||Scene.dirty)){Prof.end();return}
       Scene.dirty=false;
+      p0=Prof.now();
       BF.update();
+      const G=Prof.gpu;if(G)G.start();
       if(Stereo.on&&!XR.session)Stereo.render(Renderer.r,Scene.scene,Cam.cam);
-      else Renderer.r.render(Scene.scene,Cam.cam)
+      else Renderer.r.render(Scene.scene,Cam.cam);
+      if(G)G.stop();
+      Prof.add(Prof.RENDER,p0);
+      Prof.end()
     }
   };
-  window.NEXUS={App,Scene,Renderer,Cam,XR,Stereo,Input,WM,BR,Hand,Settings,Storage,Perf,Diag,Game,Planets,Cinema,Launcher};
+  window.NEXUS={App,Scene,Renderer,Cam,XR,Stereo,Input,WM,BR,Hand,Settings,Storage,Perf,Diag,Game,Planets,Cinema,Launcher,Prof,Quality,PerfHud,HandFeat,HandContour,Pass,NHand};
   App.boot().catch(e=>Diag.fail('Başlatma hatası','Beklenmeyen bir hata oluştu.','Sayfayı yenile. ('+(e&&e.name)+')'));
   })();
 </script>

@@ -205,13 +205,14 @@
       }catch(e){}
     }
   };
-  const DEF={ghand:0,gaa:0,pxb:0,ghz:0,gwin:0,quality:Dev.tier>=2?1:0,dpr:1,sens:1,alpha:.82,acc:0,pitch:1.2,fps:true,reduce:matchMedia('(prefers-reduced-motion:reduce)').matches,auto:false,layout:0,wp:0,fpscap:0,autoq:true,saver:false,inv:false,hcam:'environment',hsm:3,hclk:3,hdw:2,hdraw:true,hprev:false,hsmo:false,hfast:true,shz:true,hcq:0,hone:false,fbr:1,fco:1,fsa:1,fhu:0,fgr:false,fse:false,fov:75,vrProfile:'cardboard',vrEyeSep:.064,vrFov:75,vrOffsetY:0,vrScale:.85,toastms:3800,tbot:false,h24:true,ssec:true,cdec:4,nfs:22,tmin:5,awake:false,pass:true,pscale:1,wdist:2.9,ddist:1.8,pill:true,w7w:1280,w7q:1.25,hmenu:true,hmflip:false,pins:['browser','settings','win7pc','cinema','saber','perf','scene','help']};
+  const DEF={ghand:0,gaa:0,pxb:0,ghz:0,gwin:0,quality:Dev.tier>=2?1:0,dpr:1,sens:1,alpha:.82,acc:0,pitch:1.2,fps:true,reduce:matchMedia('(prefers-reduced-motion:reduce)').matches,auto:false,layout:0,wp:0,fpscap:0,autoq:true,saver:false,inv:false,hcam:'environment',hsm:3,hclk:3,hdw:2,hdraw:true,hprev:false,hsmo:false,hfast:true,shz:true,hcq:0,hone:false,fbr:1,fco:1,fsa:1,fhu:0,fgr:false,fse:false,fov:75,vrProfile:'cardboard',vrEyeSep:.064,vrFov:75,vrOffsetY:0,vrScale:.85,toastms:3800,tbot:false,h24:true,ssec:true,cdec:4,nfs:22,tmin:5,awake:false,pass:true,pscale:1,wdist:2.9,ddist:1.8,pill:true,w7w:1280,w7q:1.25,hmenu:true,hmflip:false,hview:'kontur',hnf:true,pdbg:false,gq:'auto',pins:['browser','settings','win7pc','cinema','saber','perf','scene','help']};
   const Settings={
     v:Object.assign({},DEF,Storage.get()),
     save(){
       Storage.set(this.v)
     },
     apply(){
+      try{PerfHud.sync()}catch(e){}
       const v=this.v;
       BAR=v.pill!==false?0:58;
       document.documentElement.style.setProperty('--pri',ACC[v.acc]);

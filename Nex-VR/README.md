@@ -64,6 +64,14 @@ Projeyi GitHub'a yükleyin; `.github/workflows/build.yml` APK'yı otomatik derle
 - Sinema perdesi 16:9 ve küçültüldü (≈5,4×3 m), göz hizasının üstüne alındı; alt kısmı koltuklarla kapanmaz. Oynarken panel şeffaf, video doğrudan GPU dokusundan (VideoTexture) gelir; yalnızca yeni karede yüklenir. Oynatırken toz efekti durur, el algılama seyrekleşir.
 
 
+## Stage 74 — performans, native (C++) el kinematiği, parmak konturları, fizik, NPC, ses
+Ayrıntı, ölçümler ve doğrulama sınırları: `STAGE74_PERF_HAND_PHYSICS_NPC.md`.
+- El takibinin süzgeç/kinematik/güven/ışınlanma reddi kısmı C++'ta (`app/src/main/cpp`, `libnxhand.so`, JNI'da kopyasız).
+- İçi boş siyah parmak konturları (GPU, el başına tek dörtgen); Ayarlar → El → El görünümü.
+- Goril dünyasında dolaşan, oyuncuyu algılayan NPC'ler (A*, durum makinesi, LOD) + konumsal ses.
+- Performans monitörü (Ayarlar → Grafik), uyarlanır kalite (FPS + ısı), sürdürülebilir performans modu.
+- APK: `.github/workflows/nexvr-apk.yml` (Java + NDK derlemesi + testler). Cihazda denenmedi.
+
 ## Stage 64b
 Hata taraması düzeltmeleri: `STAGE64B_BUGFIX.md`.
 

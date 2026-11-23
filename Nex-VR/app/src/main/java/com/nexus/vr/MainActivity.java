@@ -397,6 +397,31 @@ public class MainActivity extends Activity implements SensorEventListener {
         }
     }
 
+    /** Stage 74: alt WebView'in son onResume/onPause durumu (View etiketi; kaynak kimliği gerektirmeyen anahtar). */
+    static final int R_TAG_RESUMED = 0x7f0e7401;
+
+    /* Stage 74 — baş takibi (sensör) yolu: eskiden her olayda iki yeni float[9] ayrılır ve her olay için ayrı bir
+       runOnUiThread + evaluateJavascript kuyruğa girerdi. UI iş parçacığı bir an meşgul olursa eski yön kareleri
+       birikir, sonra art arda işlenirdi (gecikme + takılma). Artık: diziler yeniden kullanılır, kuyrukta en fazla bir iş
+       bekler ve o iş çalıştığı anda EN SON yönü gönderir (eskiler atlanır). */
+    final float[] sRot = new float[9], sRemap = new float[9];
+    final StringBuilder sSb = new StringBuilder(256);
+    final java.util.concurrent.atomic.AtomicReference<String> sLatest = new java.util.concurrent.atomic.AtomicReference<>();
+    final java.util.concurrent.atomic.AtomicBoolean sQueued = new java.util.concurrent.atomic.AtomicBoolean(false);
+    final Runnable sFlush = () -> {
+        sQueued.set(false);
+        String js = sLatest.getAndSet(null);
+        if (js != null && web != null && nativeGyroActive) web.evaluateJavascript(js, null);
+    };
+
+    void sensorPost(String js) {
+        sLatest.set(js);
+        if (sQueued.compareAndSet(false, true)) ncMain.post(sFlush);
+    }
+
+    /* Stage 74 — ısı: Android 10+ termal durum değişimi sayfaya bildirilir (JS kaliteyi kademeli düşürür). */
+    Object thermalListener;
+
     volatile boolean torchOn = false, rotLocked = false;
     private SensorManager sensorManager;
     private Sensor rotationSensor;
@@ -500,6 +525,20 @@ public class MainActivity extends Activity implements SensorEventListener {
             @Override
             public void onReceivedSslError(WebView v, SslErrorHandler h, SslError e) {
                 h.cancel(); // geçersiz sertifikalar asla kabul edilmez
+            }
+
+            /** Stage 74: ana arayüzün renderer süreci çökerse/öldürülürse (düşük bellek) uygulama kapanmasın:
+             *  ölü WebView ayrılır ve Activity yeniden oluşturulur (oturum durumu AppState ile geri gelir). */
+            @Override
+            public boolean onRenderProcessGone(WebView v, android.webkit.RenderProcessGoneDetail detail) {
+                Log.e("NEXUS-WebView", "Ana renderer sonlandı; crashed=" + detail.didCrash() + " → yeniden başlatılıyor");
+                if (v == web) {
+                    try { if (root != null) root.removeView(v); } catch (Throwable ignored) { }
+                    // web alanı null yapılmaz: yok edilmiş WebView'e yapılan çağrılar Chromium'da no-op'tur (NPE riski yok)
+                    try { v.destroy(); } catch (Throwable ignored) { }
+                    ncMain.post(MainActivity.this::recreate);
+                }
+                return true;
             }
 
             @Override
@@ -889,6 +928,23 @@ public class MainActivity extends Activity implements SensorEventListener {
             });
         }
 
+        /** Stage 74: performans monitörü için ucuz sistem bilgisi (JS en çok saniyede bir çağırır). */
+        @JavascriptInterface
+        public String perfInfo(String t) {
+            if (!tokenOk(t)) return "{}";
+            try {
+                android.app.ActivityManager am = (android.app.ActivityManager) getSystemService(ACTIVITY_SERVICE);
+                android.app.ActivityManager.MemoryInfo mi = new android.app.ActivityManager.MemoryInfo();
+                if (am != null) am.getMemoryInfo(mi);
+                Runtime rt = Runtime.getRuntime();
+                return "{\"nh\":" + android.os.Debug.getNativeHeapAllocatedSize()
+                        + ",\"jh\":" + (rt.totalMemory() - rt.freeMemory())
+                        + ",\"avail\":" + mi.availMem + ",\"low\":" + mi.lowMemory
+                        + ",\"views\":" + childViews.size() + ",\"mirrors\":" + mirrors.size() + ",\"gpu\":" + gpuPages.size()
+                        + ",\"kin\":" + HandKin.available() + "}";
+            } catch (Throwable e) { return "{}"; }
+        }
+
         @JavascriptInterface
         public boolean nativeCamAvailable(String t) {
             if (!tokenOk(t) || !modelOk) return false;
@@ -911,6 +967,7 @@ public class MainActivity extends Activity implements SensorEventListener {
                 c.det = (float) Math.max(.05, Math.min(.95, o.optDouble("det", .42)));
                 c.pres = (float) Math.max(.05, Math.min(.95, o.optDouble("pres", .42)));
                 c.trk = (float) Math.max(.05, Math.min(.95, o.optDouble("trk", .40)));
+                c.nf = o.optBoolean("nf", true);
             } catch (Exception e) { return; }
             runOnUiThread(() -> {
                 try {
@@ -1489,12 +1546,22 @@ public class MainActivity extends Activity implements SensorEventListener {
                 if (lp == null || lp.width != ww || lp.height != hh) {
                     lp = new FrameLayout.LayoutParams(ww, hh); v.setLayoutParams(lp);
                 }
-                v.setX(x); v.setY(y);
+                if (v.getX() != x) v.setX(x);
+                if (v.getY() != y) v.setY(y);
                 int left = Math.max(0, Math.min(cl, ww)), top = Math.max(0, Math.min(ct, hh));
                 int right = Math.max(left, Math.min(cr, ww)), bottom = Math.max(top, Math.min(cb, hh));
-                v.setClipBounds(new Rect(left, top, right, bottom));
-                v.setVisibility(visible && right > left && bottom > top ? View.VISIBLE : View.INVISIBLE);
-                if (visible) v.onResume(); else v.onPause();
+                // Stage 74: pencere sürüklenirken bu çağrı her karede gelir. Kırpma aynıysa yeni Rect ayırma / yeniden
+                // düzen yok; görünürlük değişmediyse onResume/onPause (JS zamanlayıcılarını uyandırma) tekrarlanmaz.
+                Rect cb0 = v.getClipBounds();
+                if (cb0 == null || cb0.left != left || cb0.top != top || cb0.right != right || cb0.bottom != bottom)
+                    v.setClipBounds(new Rect(left, top, right, bottom));
+                int vis = visible && right > left && bottom > top ? View.VISIBLE : View.INVISIBLE;
+                if (v.getVisibility() != vis) v.setVisibility(vis);
+                Object was = v.getTag(R_TAG_RESUMED);
+                if (!(was instanceof Boolean) || (Boolean) was != visible) {
+                    v.setTag(R_TAG_RESUMED, visible);
+                    if (visible) v.onResume(); else v.onPause();
+                }
                 if (!visible) {
                     // Ana görünüm gizlenince içindeki tarayıcı alt WebView'leri ekranda asılı kalmasın.
                     String prefix = id + "__";
@@ -1996,8 +2063,9 @@ public class MainActivity extends Activity implements SensorEventListener {
             try { registerOrientationSensors(); }
             catch (Throwable e) { Log.w("NEXUS-Sensor", "Sensör yeniden başlatılamadı", e); }
         }
-        web.onResume();
+        if (web != null) web.onResume();
         if (ncam != null) ncam.onResume();
+        startThermal();
         for (GpuPage g : gpuPages.values()) g.setHostPaused(false);
         for (AppMirror am : mirrors.values()) am.setPaused(false);
     }
@@ -2008,7 +2076,8 @@ public class MainActivity extends Activity implements SensorEventListener {
         for (GpuPage g : gpuPages.values()) g.setHostPaused(true);
         for (AppMirror am : mirrors.values()) am.setPaused(true);
         if (ncam != null) ncam.onPause();
-        web.onPause();
+        stopThermal();
+        if (web != null) web.onPause();
         super.onPause();
     }
 
@@ -2081,6 +2150,38 @@ public class MainActivity extends Activity implements SensorEventListener {
         } catch (Throwable e) { Log.w("NEXUS-Dev", "yenileme hızı ayarlanamadı", e); }
     }
 
+    /**
+     * Stage 74 — uzun süreli VR oturumunda ısınma: destekleyen cihazlarda "sürdürülebilir performans modu" açılır
+     * (CPU/GPU saatleri ısınmadan sonra ani düşmek yerine sürdürülebilir bir düzeyde sabitlenir → kare süresi kararlı).
+     * Android 10+ termal durum değişimleri sayfaya __nxThermal(seviye) ile bildirilir (0 yok … 3 ciddi … 6 kapanma).
+     */
+    void startThermal() {
+        try {
+            android.os.PowerManager pm = (android.os.PowerManager) getSystemService(POWER_SERVICE);
+            if (pm == null) return;
+            if (Build.VERSION.SDK_INT >= 24 && pm.isSustainedPerformanceModeSupported())
+                getWindow().setSustainedPerformanceMode(true);
+            if (Build.VERSION.SDK_INT >= 29 && thermalListener == null) {
+                android.os.PowerManager.OnThermalStatusChangedListener l = status -> {
+                    if (web != null) web.evaluateJavascript("window.__nxThermal&&window.__nxThermal(" + status + ")", null);
+                };
+                pm.addThermalStatusListener(getMainExecutor(), l); // ekleyince mevcut durum hemen bir kez bildirilir
+                thermalListener = l;
+            }
+        } catch (Throwable e) { Log.w("NEXUS-Dev", "termal izleme açılamadı", e); }
+    }
+
+    void stopThermal() {
+        try {
+            if (Build.VERSION.SDK_INT >= 29 && thermalListener != null) {
+                android.os.PowerManager pm = (android.os.PowerManager) getSystemService(POWER_SERVICE);
+                if (pm != null) pm.removeThermalStatusListener((android.os.PowerManager.OnThermalStatusChangedListener) thermalListener);
+            }
+        } catch (Throwable ignored) { }
+        thermalListener = null;
+        try { if (Build.VERSION.SDK_INT >= 24) getWindow().setSustainedPerformanceMode(false); } catch (Throwable ignored) { }
+    }
+
     /** Stage 63: bellek baskısı. Sistem bellek isterse sayfa çözünürlüğü düşürülür (JS tarafı __nxTrim). */
     @Override
     public void onTrimMemory(int level) {
@@ -2118,7 +2219,7 @@ public class MainActivity extends Activity implements SensorEventListener {
         long now = android.os.SystemClock.uptimeMillis();
         if (web == null) return;
         try {
-            float[] rotation = new float[9];
+            final float[] rotation = sRot;
             int type = event.sensor.getType();
             if (rotationSensor != null && type == rotationSensor.getType()) {
                 if (now - lastGyroJsMs < 8) return; // en çok ~120 Hz; WebView kuyruğunu doldurma
@@ -2141,10 +2242,9 @@ public class MainActivity extends Activity implements SensorEventListener {
                 else if (dr == android.view.Surface.ROTATION_180) { gx = -fx; gy = -fy; }
                 else if (dr == android.view.Surface.ROTATION_270) { gx = fy; gy = -fx; }
                 else { gx = fx; gy = fy; }
-                final String gjs = "window.__nxNativeGrav&&window.__nxNativeGrav(" + gx + "," + gy + "," + gz + ")";
-                runOnUiThread(() -> {
-                    if (web != null && nativeGyroActive) web.evaluateJavascript(gjs, null);
-                });
+                sSb.setLength(0);
+                sSb.append("window.__nxNativeGrav&&window.__nxNativeGrav(").append(gx).append(',').append(gy).append(',').append(gz).append(')');
+                sensorPost(sSb.toString());
                 return;
             } else return;
             lastGyroJsMs = now;
@@ -2153,16 +2253,16 @@ public class MainActivity extends Activity implements SensorEventListener {
             if (displayRotation == android.view.Surface.ROTATION_90) { axisX = SensorManager.AXIS_Y; axisY = SensorManager.AXIS_MINUS_X; }
             else if (displayRotation == android.view.Surface.ROTATION_180) { axisX = SensorManager.AXIS_MINUS_X; axisY = SensorManager.AXIS_MINUS_Y; }
             else if (displayRotation == android.view.Surface.ROTATION_270) { axisX = SensorManager.AXIS_MINUS_Y; axisY = SensorManager.AXIS_X; }
-            float[] m = new float[9];
+            final float[] m = sRemap;
             SensorManager.remapCoordinateSystem(rotation, axisX, axisY, m);
             // Euler açıları (getOrientation) yerine dönüş matrisini gönder: telefon gözlükte dik
             // dururken Euler açıları tekil (gimbal kilidi) olup sahneyi sıçratıyordu.
             for (int i = 0; i < 9; i++) if (Float.isNaN(m[i]) || Float.isInfinite(m[i])) return;
-            final String js = "window.__nxNativeMatrix&&window.__nxNativeMatrix(" + m[0] + "," + m[1] + "," + m[2] + ","
-                    + m[3] + "," + m[4] + "," + m[5] + "," + m[6] + "," + m[7] + "," + m[8] + ")";
-            runOnUiThread(() -> {
-                if (web != null && nativeGyroActive) web.evaluateJavascript(js, null);
-            });
+            sSb.setLength(0);
+            sSb.append("window.__nxNativeMatrix&&window.__nxNativeMatrix(");
+            for (int i = 0; i < 9; i++) { if (i > 0) sSb.append(','); sSb.append(m[i]); }
+            sSb.append(')');
+            sensorPost(sSb.toString());
         } catch (Throwable e) { Log.w("NEXUS-Sensor", "Yön sensörü okunamadı", e); }
     }
 

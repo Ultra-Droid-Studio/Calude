@@ -159,6 +159,6 @@ ok('AppMirror: yeni ImageReader ile geçiş, başarısızsa eski ekran korunuyor
 ok('AppMirror: uzak ekranda boyutlandırma + kapatma servis üzerinden',/link\.resizeDisplay\(/.test(mirror)&&/link\.releaseDisplay\(/.test(mirror)&&/remote/.test(mirror));
 ok('AppMirror: ilk kare bekleme 20 sn (yavaş başlatıcılar erken normal ekrana atılmasın)',/FIRST_FRAME_MS = 20000/.test(mirror));
 ok('ShizukuLink: createDisplay/resizeDisplay/releaseDisplay sarmalayıcıları',/int createDisplay\(/.test(link)&&/boolean resizeDisplay\(/.test(link)&&/void releaseDisplay\(/.test(link));
-ok('Gradle: sürüm 1.11 / kod 12',/versionCode 12/.test(gradle)&&/versionName "1\.11"/.test(gradle));
+ok('Gradle: sürüm 1.12 / kod 13',/versionCode 13/.test(gradle)&&/versionName "1\.12"/.test(gradle));
 
 console.log(fails?('\n'+fails+' BAŞARISIZ'):'\nTÜMÜ GEÇTİ');process.exit(fails?1:0);
