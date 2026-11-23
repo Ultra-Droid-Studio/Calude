@@ -1,0 +1,5 @@
+## Android SDK yolunuz. Bu dosyayı "local.properties" olarak kopyalayın (ANDROID_HOME ayarlıysa gerekmez).
+## Windows : sdk.dir=C\:\\Users\\KULLANICI\\AppData\\Local\\Android\\Sdk
+## Linux   : sdk.dir=/home/KULLANICI/Android/Sdk
+## macOS   : sdk.dir=/Users/KULLANICI/Library/Android/sdk
+sdk.dir=/home/KULLANICI/Android/Sdk

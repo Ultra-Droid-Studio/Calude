@@ -1,0 +1,10 @@
+# derleme çıktıları
+.gradle/
+build/
+app/build/
+app/.cxx/
+local.properties
+# derlemede indirilen
+app/src/main/assets/three.min.js
+# uçtan uca test ekran görüntüleri
+tools/e2e/out/

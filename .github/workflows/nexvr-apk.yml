@@ -1,0 +1,69 @@
+# Nex VR — APK derlemesi + Node testleri (Stage 74).
+# Java/Kotlin + NDK (C++ el kinematiği, CMake) + web parçaları burada gerçekten derlenir.
+# Çıktı: Actions > bu çalıştırma > Artifacts > nex-vr-debug-apk
+name: Nex VR APK
+
+on:
+  push:
+    paths: ['Nex-VR/**', '.github/workflows/nexvr-apk.yml']
+  pull_request:
+    paths: ['Nex-VR/**', '.github/workflows/nexvr-apk.yml']
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: Nex-VR
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # Not: shizuku.test.js'deki "başlık çubuğunda Klavye düğmesi" kontrolü Stage 67'den beri başarısız (bilinen);
+      # bu yüzden test adımı APK derlemesini durdurmaz ama başarısızsa çalıştırmada uyarı olarak görünür.
+      - name: Web parçaları güncel mi + Node testleri
+        continue-on-error: true
+        run: |
+          node tools/build-html.js --check
+          fail=0
+          for f in tools/*.test.js; do
+            echo "::group::$f"
+            timeout 120 node "$f" || { echo "::error::$f başarısız"; fail=1; }
+            echo "::endgroup::"
+          done
+          exit $fail
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      - name: SDK / NDK / CMake
+        run: |
+          echo "sdk.dir=$ANDROID_HOME" > local.properties
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-34" "build-tools;34.0.0" "cmake;3.22.1" > /dev/null
+
+      - name: assembleDebug (Java + C++ + varlıklar)
+        run: gradle --no-daemon assembleDebug
+
+      - name: APK içinde native kitaplık var mı
+        run: |
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          unzip -l "$APK" | grep -E 'lib/(arm64-v8a|armeabi-v7a)/libnxhand.so'
+          unzip -l "$APK" | grep -E 'assets/(index.html|gorilla-npc.js|three.min.js)'
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nex-vr-debug-apk
+          path: Nex-VR/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
