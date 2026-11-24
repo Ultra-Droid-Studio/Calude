@@ -14796,6 +14796,11 @@ window.__w7dlPage=function(box,kind){
 .kon-term.blur .cur{animation:none;background:transparent;outline:1px solid #fff;outline-offset:-1px}
 @keyframes kon-b{50%{opacity:0}}
 .kon-term textarea{position:absolute;left:0;top:0;width:1px;height:1px;opacity:0;border:0;padding:0;resize:none;overflow:hidden}
+
+/* tam ekran (büyütülmüş) pencere varken panel alta yapışır, yoksa yüzer */
+#ar-panel{transition:left .18s ease,right .18s ease,bottom .18s ease,border-radius .18s ease,box-shadow .18s ease}
+#root.arch.ar-dock{--ar-g:0px}
+#root.arch.ar-dock #ar-panel{border-radius:0;border-width:1px 0 0;box-shadow:none}
 </style>
 <script id="ub-theme-js">/* ===== Ubuntu (GNOME) teması: Win11 katmanının üstünde çalışır, açıkken #root'a "ubuntu" sınıfı eklenir ===== */
 (function(){
@@ -15610,6 +15615,14 @@ window.__w7dlPage=function(box,kind){
     });
   }
 
+  /* ---------- büyütülmüş pencere varsa panel alta yapışır ---------- */
+  function syncDock(){
+    var on=isAr()&&$$('.window__wrapper[data-max="1"]').some(function(w){return w.style.display!=='none'&&w.offsetWidth>0;});
+    if(root.classList.contains('ar-dock')!==on) root.classList.toggle('ar-dock',on);
+  }
+  document.addEventListener('click',function(){ if(isAr()) setTimeout(syncDock,0); },true);
+  document.addEventListener('dblclick',function(){ if(isAr()) setTimeout(syncDock,0); },true);
+
   /* ---------- duvar kağıdı ---------- */
   function stBg(){try{return JSON.stringify((JSON.parse(gl('w7_personalize')||'{}')||{}).bg||null)+'|'+(gl('w11_bgsnap')||'');}catch(e){return 'null';}}
   function syncWp(){ root.classList.toggle('ar-wp',isAr()&&gl(SNAP)===stBg()); }
@@ -15623,7 +15636,7 @@ window.__w7dlPage=function(box,kind){
       if(save) sl(SNAP,stBg());
       root.classList.add('arch','win11dark');
       build(); hookToast(); tick(); renderTasks(true); trayIcons();
-    } else { closeAll(); root.classList.remove('arch','ar-wp'); }
+    } else { closeAll(); root.classList.remove('arch','ar-wp','ar-dock'); }
     if(save) sl(KEY,v?'1':'0');
     syncWp();
   }
@@ -15647,7 +15660,7 @@ window.__w7dlPage=function(box,kind){
   },true);
   new MutationObserver(function(){ if(isAr()&&!root.classList.contains('win11')) setTheme(false,true); if(isAr()&&root.classList.contains('ubuntu')) setTheme(false,true); }).observe(root,{attributes:true,attributeFilter:['class']});
   if(navigator.getBattery){ navigator.getBattery().then(function(b){ var u=function(){bat={l:b.level,c:b.charging}; trayIcons();}; u(); ['levelchange','chargingchange'].forEach(function(n){b.addEventListener(n,u);}); }).catch(function(){}); }
-  setInterval(function(){ if(!isAr()) return; fitWindows(); tick(); renderTasks(false); trayIcons(); syncWp(); hookToast(); },800);
+  setInterval(function(){ if(!isAr()) return; syncDock(); fitWindows(); tick(); renderTasks(false); trayIcons(); syncWp(); hookToast(); },800);
   window.addEventListener('resize',function(){ closeMenu(); });
   function init(){
     if(!setupLi()) setTimeout(function(){ if(!setupLi()) setTimeout(setupLi,1500); },500);

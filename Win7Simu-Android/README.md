@@ -136,7 +136,7 @@ Kişiselleştir penceresinden seçilir; aynı anda yalnızca biri açık kalır.
   - Kod: `<style id="ub-theme-css">` ve `<script id="ub-theme-js">` (`window.__ubTheme.set(true|false)`).
 - **Arch Linux (KDE Plasma 6 / Breeze Koyu)** (v1.9.66): Kişiselleştir penceresinde ya da Win11 Ayarlar > Kişiselleştirme > Temalar'da **Arch Linux** seçilir.
   Ubuntu temasıyla aynı anda açık olmaz; Windows görev çubuğu gizlenir, yerine:
-  - **Alt panel (yüzen, yuvarlak köşeli):** solda Arch logolu *Uygulama Başlatıcı*, sabitlenen + açık uygulamalar (altta mavi çizgi = etkin, gri = açık),
+  - **Alt panel (yüzen, yuvarlak köşeli; büyütülmüş pencere varken alta yapışır):** solda Arch logolu *Uygulama Başlatıcı*, sabitlenen + açık uygulamalar (altta mavi çizgi = etkin, gri = açık),
     sağda tepsi: bildirimler · ağ · ses · pil · saat (`00:30` / `24.11.2026`) · *Masaüstüne göz at*. Uzun bas / sağ tık: Aç · Sabitle/Ayır · Kapat (`ar_fav`).
   - **Kickoff başlatıcı:** kullanıcı + arama; solda Favoriler / Tüm Uygulamalar / Son Kullanılanlar / Ev; altta Sistem Ayarları, Kilitle,
     Oturumu kapat (Windows'a dön), Yeniden başlat, Kapat.
