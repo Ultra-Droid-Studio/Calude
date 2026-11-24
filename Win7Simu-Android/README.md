@@ -8,7 +8,7 @@ UltraDroid arayüzünü (`app/src/main/assets/index.html`) tam ekran bir Android
 | | |
 |---|---|
 | `applicationId` | `com.ultradroid.app` |
-| Sürüm | **1.9.65** (versionCode 83) |
+| Sürüm | **1.9.66** (versionCode 84) |
 | minSdk / targetSdk | 24 / 34 |
 | Dil / yapı | Java, Gradle 8.4 (AGP 8.1.4), JDK 17 |
 | Bağımlılıklar | Shizuku API + provider 13.1.5, androidx.core 1.12.0 (FileProvider) |
@@ -134,6 +134,17 @@ Kişiselleştir penceresinden seçilir; aynı anda yalnızca biri açık kalır.
   - Varsayılan **Koyu Stil** açıktır (Win11 uygulamalarının içi koyu olduğu için); hızlı ayarlardan kapatınca açık Yaru görünümüne geçer (`ub_dark`).
   - Ubuntu seçilince Ubuntu duvar kağıdı uygulanır; başka arka plan seçilince o kullanılır.
   - Kod: `<style id="ub-theme-css">` ve `<script id="ub-theme-js">` (`window.__ubTheme.set(true|false)`).
+- **Arch Linux (KDE Plasma 6 / Breeze Koyu)** (v1.9.66): Kişiselleştir penceresinde ya da Win11 Ayarlar > Kişiselleştirme > Temalar'da **Arch Linux** seçilir.
+  Ubuntu temasıyla aynı anda açık olmaz; Windows görev çubuğu gizlenir, yerine:
+  - **Alt panel:** solda Arch logolu *Uygulama Başlatıcı*, sabitlenen + açık uygulamalar (altta mavi çizgi = etkin, gri = açık),
+    sağda tepsi: bildirimler · ağ · ses · pil · saat (`00:30` / `24.11.2026`) · *Masaüstüne göz at*. Uzun bas / sağ tık: Aç · Sabitle/Ayır · Kapat (`ar_fav`).
+  - **Kickoff başlatıcı:** kullanıcı + arama; solda Favoriler / Tüm Uygulamalar / Son Kullanılanlar / Ev; altta Sistem Ayarları, Kilitle,
+    Oturumu kapat (Windows'a dön), Yeniden başlat, Kapat.
+  - **Pencereler:** Breeze başlık çubuğu (30 px, ortalı başlık, solda uygulama simgesi), ⌄ ⌃ ✕ düğmeleri, kapatmada kırmızı daire.
+  - **Tepsi menüleri:** Bildirimler (+ Rahatsız Etme), Ağlar (Wi-Fi / Bluetooth / Uçak kipi), Ses düzeyi, Güç ve Pil (parlaklık, güç tasarrufu, gece ışığı), takvim.
+  - Kod: `<style id="ar-theme-css">` ve `<script id="ar-theme-js">` (`window.__archTheme.set(true|false)`).
+- **Konsole** (v1.9.66, her temada, Başlat menüsünde Komut İstemi'nin yanında): KDE terminal penceresi (menü çubuğu, sekme, `arch@archlinux:~$` istemi).
+  Şimdilik boş: yazı yazılır ve Enter yeni satıra geçer ama komut çalıştırılmaz. Kod: `<script id="ar-konsole-js">`.
 
 **Chrome penceresi (Chrome 2019 stili):** gri sekme şeridi, yuvarlak köşeli aktif sekme, hap biçimli adres çubuğu
 (Google "G" + yıldız), geri/ileri/yenile, üç nokta menü, profil simgesi, ince küçült/büyüt/kapat düğmeleri.
@@ -351,6 +362,7 @@ Android 11+ için `queries` içinde Shizuku, Termux ve başlatılabilir uygulama
 
 | Sürüm | Değişiklik |
 |---|---|
+| 1.9.66 | **Arch Linux teması** (KDE Plasma 6: alt panel, Kickoff, Breeze pencereler, tepsi menüleri, takvim) ve boş **Konsole** uygulaması. |
 | 1.9.65 | **Ubuntu teması:** GNOME üst paneli, sol dock, libadwaita pencereleri, uygulama menüsü, hızlı ayarlar ve saat/takvim menüsü (bildirimler + Rahatsız Etme). Kişiselleştir ve Win11 Ayarlar > Temalar’dan seçilir. |
 | 1.9.50 | **Linux pencereleri akıcılığı (1. adım):** yerleştirme döngüsü boştayken yavaşlar (girdi/animasyonda tam hız); Xvnc destekliyorsa `-FrameRate 30` |
 | 1.9.51 | **Linux pencereleri akıcılığı (2. adım):** Linux pencerelerinde cam (blur) efekti kapatıldı; Linux penceresi taşınırken JPEG anlık görüntü alınmıyor, WebView canlı taşınıyor; görünmeyen (küçültülmüş / altta kalan) Linux penceresi 1,2 sn sonra duraklatılıyor (JS çözme + sunucu güncellemesi durur), görününce hemen devam ediyor; noVNC `quality=6&compression=0` (localhost'ta bant sorun değil, CPU azalır); Xvnc/Xtigervnc destekliyorsa `-CompareFB 0`. |

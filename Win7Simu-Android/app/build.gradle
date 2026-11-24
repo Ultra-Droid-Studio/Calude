@@ -8,8 +8,8 @@ android {
         applicationId "com.ultradroid.app"
         minSdk 24
         targetSdk 34
-        versionCode 83
-        versionName "1.9.65"
+        versionCode 84
+        versionName "1.9.66"
     }
 
     buildTypes {

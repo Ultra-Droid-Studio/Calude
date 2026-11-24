@@ -12229,8 +12229,8 @@ function temaPage(pg,Q){
  function upd(){var c=Q.themes.cur();Object.keys(bt).forEach(function(k){bt[k].classList.toggle('on',k===c);});}
  Q.themes.list().forEach(function(t){
   var b=E('button',null,'<span class="im"></span><span class="l"></span>');b.querySelector('.l').textContent=(t.id==='win11'?'Windows 11':t.id==='aero-1'?'Windows 7':t.name);
-  b.querySelector('.im').style.backgroundImage=(t.id==='win11'?'var(--w11-bloom)':t.id==='ubuntu'?'linear-gradient(135deg,#77216F,#5E2750 45%,#E95420 130%)':'url("'+t.bg+'")');
-  b.onclick=function(){Q.themes.set(t.id);setTimeout(upd,500);toast(t.id==='win11'?'Windows 11 teması':t.id==='ubuntu'?'Ubuntu teması':'Windows 7 temasına geçildi');};
+  b.querySelector('.im').style.backgroundImage=(t.id==='win11'?'var(--w11-bloom)':t.id==='ubuntu'?'linear-gradient(135deg,#77216F,#5E2750 45%,#E95420 130%)':t.id==='arch'?'linear-gradient(180deg,#0d1117,#123049)':'url("'+t.bg+'")');
+  b.onclick=function(){Q.themes.set(t.id);setTimeout(upd,500);toast(t.id==='win11'?'Windows 11 teması':t.id==='ubuntu'?'Ubuntu teması':t.id==='arch'?'Arch Linux teması':'Windows 7 temasına geçildi');};
   gr.appendChild(b);bt[t.id]=b;
  });
  upd();
@@ -12557,7 +12557,7 @@ function fileToData(f,max,type,ok,bad){var rd=new FileReader();rd.onload=functio
 var themes={
  pw:function(){return document.getElementById('window-personalize-wrapper')||document.getElementById('window-personalize');},
  list:function(){var pw=themes.pw();if(!pw)return [];return [].map.call(pw.querySelectorAll('[data-test-theme]'),function(li){var sp=li.querySelector('.personalize__theme-bg'),lb=li.querySelector('.personalize__theme-label'),bg=sp?sp.style.getPropertyValue('--bg'):'',m=/url\(["']?(.*?)["']?\)\s*$/.exec(bg);return {id:li.getAttribute('data-test-theme'),name:lb?lb.textContent.trim():li.getAttribute('data-test-theme'),bg:m?m[1]:''};}).sort(function(a,b){return (a.id==='win11'?-1:0)-(b.id==='win11'?-1:0);});},
- cur:function(){return root.classList.contains('ubuntu')?'ubuntu':root.classList.contains('win11')?'win11':(function(){var pw=themes.pw(),li=pw&&pw.querySelector('[data-test-theme].is-selected');return li?li.getAttribute('data-test-theme'):'aero-1';})();},
+ cur:function(){return root.classList.contains('ubuntu')?'ubuntu':root.classList.contains('arch')?'arch':root.classList.contains('win11')?'win11':(function(){var pw=themes.pw(),li=pw&&pw.querySelector('[data-test-theme].is-selected');return li?li.getAttribute('data-test-theme'):'aero-1';})();},
  set:function(id){var pw=themes.pw(),li=pw&&pw.querySelector('[data-test-theme="'+id+'"]');if(li)li.click();}
 };
 window.__w11p={cfg:C,def:D,palette:PAL,themes:themes,fileToData:fileToData,bg:bg,
@@ -14624,6 +14624,179 @@ window.__w7dlPage=function(box,kind){
 #root.ubuntu #window-chrome .window__control-item:hover{background-color:var(--ub-ctl-h)!important}
 @media (max-height:520px){#ub-cal .gr{grid-template-columns:repeat(7,30px)}#ub-cal .d{width:30px;height:30px}#ub-cal .gr .h{height:24px}#ub-cal .cl{gap:4px;padding:10px}#ub-cal .fd{font-size:17px}#ub-qs{padding:10px;gap:8px}#ub-qs .tg{gap:8px}.ub-tgl{height:38px}}
 </style>
+<style id="ar-theme-css">
+/* ===== Arch Linux (KDE Plasma 6 / Breeze Koyu) teması: alt panel, Kickoff, Breeze pencereler, tepsi menüleri ===== */
+#root{--ar-h:44px}
+@media (max-height:520px){#root{--ar-h:40px}}
+#root:not(.arch) .arx{display:none!important}
+.arx,.arx *{box-sizing:border-box;font-family:"Noto Sans","Segoe UI",Roboto,system-ui,sans-serif;-webkit-tap-highlight-color:transparent}
+.arx{font-size:13px;color:#eff0f1}
+.arx button{font:inherit;color:inherit;background:none;border:0;padding:0;margin:0;text-align:inherit;cursor:default;outline:none}
+.arx svg{display:block;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.arx svg .f{fill:currentColor;stroke:none}
+@keyframes ar-up{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+
+/* Windows görev çubuğu gizlenir, masaüstü panelin üstünde kalır */
+#root.arch .taskbar__wrapper{opacity:0!important;pointer-events:none!important;transform:translateY(120%)!important}
+#root.arch #w11-start,#root.arch #w11-qs{display:none!important}
+#root.arch #desktop{top:0!important;left:0!important;width:100vw!important;height:calc(100vh - var(--ar-h))!important}
+#root.arch.ar-wp .desktop-background.is-main{background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath d='M50 18c-1.9 4.6-3 7.6-5.1 12.1 1.3 1.4 2.9 3 5.5 4.8-2.8-1.2-4.7-2.3-6.2-3.6-2.8 5.9-7.3 14.5-16.2 30.7 7-4 12.4-6.5 17.5-7.4-.2-.9-.3-1.9-.3-3l.1-.4c.2-4.6 2.6-8.1 5.4-7.9 2.8.2 4.9 4.2 4.8 8.8 0 .9-.1 1.7-.3 2.5 5 1 10.4 3.4 17.3 7.4-1.4-2.5-2.6-4.8-3.8-7-1.8-1.4-3.7-3.3-7.5-5.2 2.6.7 4.5 1.5 5.9 2.3C61.3 39.6 58.5 33.4 50 18z' fill='%231793d1' fill-opacity='.22'/%3E%3C/svg%3E") center 42%/min(46vh,46vw) no-repeat,radial-gradient(90% 70% at 50% 110%,#11507a 0,rgba(17,80,122,0) 70%),linear-gradient(180deg,#0d1117 0%,#0f1b27 55%,#123049 100%)!important}
+
+/* --- Alt panel --- */
+#ar-panel{position:fixed;left:0;right:0;bottom:0;height:var(--ar-h);background:rgba(32,35,38,.97);border-top:1px solid rgba(255,255,255,.08);display:flex;align-items:center;gap:2px;padding:0 4px;z-index:2147480000;user-select:none;-webkit-user-select:none}
+.ar-pb{height:calc(var(--ar-h) - 6px);min-width:calc(var(--ar-h) - 6px);border-radius:4px;display:flex;align-items:center;justify-content:center;position:relative;border:1px solid transparent;transition:background .1s;flex:none}
+.ar-pb:hover{background:rgba(255,255,255,.09)}
+.ar-pb.on{background:rgba(61,174,233,.22);border-color:rgba(61,174,233,.6)}
+.ar-launch svg{width:calc(var(--ar-h) - 16px);height:calc(var(--ar-h) - 16px);color:#1793d1}
+.ar-sep{width:1px;height:55%;background:rgba(255,255,255,.14);margin:0 4px;flex:none}
+#ar-panel .tasks{display:flex;align-items:center;gap:2px;min-width:0;overflow:hidden}
+.ar-task{width:calc(var(--ar-h) + 2px)}
+.ar-task .ic{width:calc(var(--ar-h) - 16px);height:calc(var(--ar-h) - 16px);background:var(--icon) center/contain no-repeat;pointer-events:none}
+.ar-task i{position:absolute;left:25%;right:25%;bottom:1px;height:3px;border-radius:2px;background:rgba(239,240,241,.45);pointer-events:none}
+.ar-task.act{background:rgba(255,255,255,.12)}
+.ar-task.act i{left:10%;right:10%;background:#3daee9}
+#ar-panel .sp{flex:1}
+#ar-panel .tray{display:flex;align-items:center;gap:1px}
+.ar-tb{min-width:30px;padding:0 6px}
+.ar-tb svg{width:16px;height:16px}
+.ar-clk{flex-direction:column;padding:0 8px;line-height:1.15;font-variant-numeric:tabular-nums}
+.ar-clk b{font-weight:500;font-size:12.5px}.ar-clk span{font-size:11px;opacity:.8}
+@media (max-height:520px){.ar-clk span{display:none}}
+.ar-desk{min-width:22px;width:22px}
+.ar-desk svg{width:14px;height:14px;opacity:.85}
+
+/* --- Kickoff (uygulama başlatıcı) --- */
+#ar-kick{position:fixed;left:4px;bottom:calc(var(--ar-h) + 4px);width:min(660px,calc(100vw - 8px));height:min(520px,calc(100vh - var(--ar-h) - 12px));background:#2a2e32;border:1px solid rgba(255,255,255,.1);border-radius:8px;box-shadow:0 10px 36px rgba(0,0,0,.5);z-index:2147480050;display:none;flex-direction:column;overflow:hidden;animation:ar-up .14s ease-out}
+#ar-kick.open{display:flex}
+#ar-kick header{display:flex;align-items:center;gap:10px;padding:8px 10px;background:#31363b;border-bottom:1px solid rgba(255,255,255,.07);flex:none}
+#ar-kick .av{width:32px;height:32px;border-radius:50%;background:#4d5359;display:flex;align-items:center;justify-content:center;flex:none}
+#ar-kick .av svg{width:20px;height:20px}
+#ar-kick header strong{font-weight:500;font-size:14px;margin-right:auto}
+#ar-kick header label{display:flex;align-items:center;gap:6px;width:min(320px,55%);height:32px;padding:0 10px;border-radius:4px;background:#1b1e20;border:1px solid rgba(255,255,255,.14)}
+#ar-kick header label:focus-within{border-color:#3daee9}
+#ar-kick header label svg{width:15px;height:15px;opacity:.7;flex:none}
+#ar-kick header input{flex:1;min-width:0;background:transparent;border:0;outline:0;color:#eff0f1;font:inherit}
+#ar-kick header input::placeholder{color:rgba(239,240,241,.5)}
+#ar-kick .bd{flex:1;min-height:0;display:flex}
+#ar-kick nav{width:200px;flex:none;padding:6px;display:flex;flex-direction:column;gap:2px;border-right:1px solid rgba(255,255,255,.07);overflow-y:auto}
+#ar-kick nav button{height:34px;padding:0 8px;border-radius:4px;display:flex;align-items:center;gap:10px;border:1px solid transparent}
+#ar-kick nav button svg{width:17px;height:17px;flex:none}
+#ar-kick nav button span{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#ar-kick nav button .ch{width:11px;height:11px;opacity:.6}
+#ar-kick nav button:hover{background:rgba(255,255,255,.08)}
+#ar-kick nav button.sel{background:rgba(61,174,233,.22);border-color:rgba(61,174,233,.55)}
+#ar-kick nav hr{border:0;height:1px;background:rgba(255,255,255,.08);margin:4px 2px}
+#ar-kick main{flex:1;min-width:0;overflow-y:auto;padding:8px}
+#ar-kick .fav{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:4px}
+#ar-kick .fav button{display:flex;flex-direction:column;align-items:center;gap:6px;padding:10px 4px;border-radius:4px;border:1px solid transparent;text-align:center}
+#ar-kick .fav .ic{width:48px;height:48px;background:var(--icon) center/contain no-repeat}
+#ar-kick .fav span{width:100%;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#ar-kick .lst button{width:100%;height:40px;display:flex;align-items:center;gap:10px;padding:0 8px;border-radius:4px;border:1px solid transparent}
+#ar-kick .lst .ic{width:26px;height:26px;background:var(--icon) center/contain no-repeat;flex:none}
+#ar-kick .lst .tx{display:flex;flex-direction:column;min-width:0;line-height:1.2}
+#ar-kick .lst .tx b{font-weight:400;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#ar-kick .lst .tx small{opacity:.6;font-size:11px}
+#ar-kick .fav button:hover,#ar-kick .lst button:hover,#ar-kick .fav button.sel,#ar-kick .lst button.sel{background:rgba(61,174,233,.18);border-color:rgba(61,174,233,.45)}
+#ar-kick .none{opacity:.6;padding:30px 8px;text-align:center}
+#ar-kick footer{display:flex;align-items:center;gap:2px;padding:6px;background:#31363b;border-top:1px solid rgba(255,255,255,.07);flex:none}
+#ar-kick footer button{height:32px;padding:0 10px;border-radius:4px;display:flex;align-items:center;gap:8px;border:1px solid transparent}
+#ar-kick footer button:hover{background:rgba(255,255,255,.09)}
+#ar-kick footer button svg{width:16px;height:16px}
+#ar-kick footer .gap{flex:1}
+@media (max-width:560px){#ar-kick nav{width:56px}#ar-kick nav button span,#ar-kick nav button .ch{display:none}#ar-kick footer .lb{display:none}}
+@media (max-height:520px){#ar-kick header{padding:5px 8px}#ar-kick .fav .ic{width:38px;height:38px}#ar-kick .fav button{padding:6px 4px}#ar-kick nav button{height:30px}}
+
+/* --- Tepsi açılır pencereleri --- */
+.ar-pop{position:fixed;right:6px;bottom:calc(var(--ar-h) + 6px);width:min(340px,calc(100vw - 12px));max-height:calc(100vh - var(--ar-h) - 14px);overflow:auto;background:#2a2e32;border:1px solid rgba(255,255,255,.1);border-radius:8px;box-shadow:0 10px 36px rgba(0,0,0,.5);padding:12px;z-index:2147480050;display:none;flex-direction:column;gap:10px;animation:ar-up .14s ease-out;user-select:none;-webkit-user-select:none}
+.ar-pop.open{display:flex}
+.ar-pop h3{margin:0;font-size:14px;font-weight:500;display:flex;align-items:center;gap:8px}
+.ar-pop h3 .x{margin-left:auto}
+.ar-pop .row{display:flex;align-items:center;gap:10px;min-height:36px;padding:0 6px;border-radius:4px}
+.ar-pop .row:hover{background:rgba(255,255,255,.05)}
+.ar-pop .row svg{width:18px;height:18px;flex:none}
+.ar-pop .row .t{flex:1;display:flex;flex-direction:column;line-height:1.2}
+.ar-pop .row .t small{opacity:.6;font-size:11px}
+.ar-pop .sl{display:flex;align-items:center;gap:10px;padding:0 6px}
+.ar-pop .sl svg{width:18px;height:18px;flex:none}
+.ar-pop .sl b{font-weight:400;width:38px;text-align:right;font-variant-numeric:tabular-nums;opacity:.85}
+.ar-range{-webkit-appearance:none;appearance:none;flex:1;height:4px;border-radius:2px;background:linear-gradient(to right,#3daee9 var(--v,50%),#4d5359 var(--v,50%));outline:none;margin:0}
+.ar-range::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;border-radius:50%;background:#eff0f1;border:1px solid #3daee9}
+.ar-range::-moz-range-thumb{width:18px;height:18px;border-radius:50%;background:#eff0f1;border:1px solid #3daee9}
+.ar-chk{position:relative;width:36px;height:20px;border-radius:10px;background:#5f666d;flex:none;transition:background .15s}
+.ar-chk::after{content:'';position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#eff0f1;transition:transform .15s}
+.ar-chk.on{background:#3daee9}.ar-chk.on::after{transform:translateX(16px)}
+.ar-btn{height:30px;padding:0 12px;border-radius:4px;background:#3b4045;border:1px solid rgba(255,255,255,.12)!important}
+.ar-btn:hover{border-color:#3daee9!important}
+.ar-pop .empty{opacity:.6;text-align:center;padding:24px 0}
+.ar-pop .nc{background:#31363b;border-radius:6px;padding:8px 10px;display:flex;flex-direction:column;gap:2px}
+.ar-pop .nc small{opacity:.6;font-size:11px}
+/* takvim */
+#ar-cal{width:min(300px,calc(100vw - 12px))}
+#ar-cal .today{display:flex;flex-direction:column;padding:0 4px}
+#ar-cal .today strong{font-size:16px;font-weight:500}#ar-cal .today span{opacity:.75}
+#ar-cal header{display:flex;align-items:center;justify-content:space-between}
+#ar-cal header button{width:28px;height:28px;border-radius:4px;display:flex;align-items:center;justify-content:center}
+#ar-cal header button:hover,#ar-cal .gr button:hover{background:rgba(255,255,255,.09)}
+#ar-cal header svg{width:16px;height:16px}
+#ar-cal .gr{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;text-align:center}
+#ar-cal .gr b{font-weight:500;opacity:.6;font-size:11.5px;padding:4px 0}
+#ar-cal .gr button{height:32px;border-radius:4px;text-align:center;border:1px solid transparent;font-variant-numeric:tabular-nums}
+#ar-cal .gr button.mu{opacity:.4}
+#ar-cal .gr button.td{background:rgba(61,174,233,.25);border-color:#3daee9}
+#ar-cal .gr button.sel:not(.td){border-color:rgba(61,174,233,.6)}
+#ar-cal p{margin:0;opacity:.6;text-align:center}
+@media (max-height:520px){#ar-cal .gr button{height:26px}}
+/* bildirim balonu */
+#ar-note{position:fixed;right:8px;bottom:calc(var(--ar-h) + 8px);width:min(340px,calc(100vw - 16px));background:#2a2e32;border:1px solid rgba(255,255,255,.1);border-radius:8px;box-shadow:0 10px 36px rgba(0,0,0,.5);padding:10px 12px;z-index:2147480060;display:none;animation:ar-up .15s ease-out}
+#ar-note.open{display:block}
+#ar-note b{display:block;font-weight:500;margin-bottom:2px}
+/* sağ tık menüsü */
+#ar-menu{position:fixed;z-index:2147480070;min-width:190px;background:#2a2e32;border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:4px;box-shadow:0 8px 28px rgba(0,0,0,.5);display:none;flex-direction:column}
+#ar-menu.open{display:flex}
+#ar-menu button{height:30px;padding:0 10px;border-radius:3px;text-align:left}
+#ar-menu button:hover{background:rgba(61,174,233,.25)}
+#ar-menu hr{border:0;height:1px;background:rgba(255,255,255,.1);margin:3px 4px}
+
+/* --- Breeze pencereleri --- */
+#root.arch .window__main{padding:0!important;border:0!important;border-radius:5px!important;background:#31363b!important;box-shadow:0 12px 42px rgba(20,36,57,.45),0 0 0 1px rgba(255,255,255,.145)!important;overflow:hidden!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important}
+#root.arch .window__main:not(.active){box-shadow:0 6px 24px rgba(0,0,0,.35),0 0 0 1px rgba(255,255,255,.08)!important}
+#root.arch .window__main.maximized,#root.arch [data-max="1"]>.window__main{border-radius:0!important;box-shadow:none!important}
+#root.arch .window__wrapper[data-max="1"]{width:100%!important;height:100%!important}
+#root.arch .window__background{display:none!important}
+#root.arch .window__main:not(#window-chrome) .window__titlebar{height:30px!important;min-height:30px!important;flex:0 0 auto!important;margin:0!important;padding:0 0 0 8px!important;display:flex!important;align-items:center!important;background:#31363b!important;border-bottom:1px solid rgba(255,255,255,.04)!important;color:#eff0f1!important;border-radius:0!important;box-shadow:none!important}
+#root.arch .window__titlebar-icon{width:16px!important;height:16px!important;flex:none}
+#root.arch .window__main:not(#window-chrome) .window__titlebar-title{text-align:center!important;font-weight:500!important;font-size:13.3px!important;color:#eff0f1!important;padding-left:72px!important;text-shadow:none!important;font-family:"Noto Sans","Segoe UI",Roboto,system-ui,sans-serif!important}
+#root.arch .window__main:not(.active) .window__titlebar-title{opacity:.6}
+#root.arch .window__main:not(#window-chrome) .window__control-list{position:static!important;display:flex!important;align-items:center!important;gap:6px!important;padding:0 7px!important;margin:0!important;flex:none!important;background:none!important;border:0!important;box-shadow:none!important}
+#root.arch #window-chrome .window__control-list{gap:6px!important;padding-right:7px!important;align-items:center!important}
+#root.arch .window__control-item,#root.arch #window-chrome .window__control-item{width:26px!important;height:24px!important;min-width:26px!important;border-radius:3px!important;background:transparent!important;background-image:none!important;border:0!important;margin:0!important;padding:0!important;box-shadow:none!important;color:#eff0f1!important;display:flex!important;align-items:center!important;justify-content:center!important;position:relative!important}
+#root.arch .window__control-item:hover,#root.arch #window-chrome .window__control-item:hover{background:rgba(255,255,255,.125)!important}
+#root.arch .window__control-item:active{background:#3daee9!important}
+#root.arch .window__control-item.is-close:hover,#root.arch #window-chrome .window__control-item.is-close:hover{background:#da4453!important;border-radius:50%!important;width:24px!important;min-width:24px!important;margin:0 1px!important}
+#root.arch .window__main:not(.active) .window__control-item{opacity:.7}
+#root.arch .window__control-item>*{display:none!important}
+#root.arch .window__control-item::before{content:none!important;display:none!important}
+#root.arch .window__control-item::after{content:''!important;display:block!important;position:absolute!important;inset:0!important;background:currentColor!important;-webkit-mask:var(--ar-m) center/16px 16px no-repeat;mask:var(--ar-m) center/16px 16px no-repeat;border:0!important;transform:none!important;opacity:1!important;width:auto!important;height:auto!important}
+#root.arch .window__control-item.is-minimize{--ar-m:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")}
+#root.arch .window__control-item.is-maximize{--ar-m:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m18 15-6-6-6 6'/%3E%3C/svg%3E")}
+#root.arch [data-max="1"] .window__control-item.is-maximize,#root.arch #window-chrome.cx-max .window__control-item.is-maximize{--ar-m:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 4 6 10h12zM6 15l6 6 6-6'/%3E%3C/svg%3E")}
+#root.arch .window__control-item.is-close{--ar-m:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M18 6 6 18M6 6l12 12'/%3E%3C/svg%3E")}
+#root.arch .window__body,#root.arch .window__menubar,#root.arch .window__statusbar{border-left:0!important;border-right:0!important}
+
+/* --- Konsole uygulaması (her temada) --- */
+.kon{display:flex;flex-direction:column;width:100%;height:100%;background:#1d1d20;color:#fff;overflow:hidden;font:13px "Noto Sans","Segoe UI",Roboto,system-ui,sans-serif}
+.kon-mb{display:flex;align-items:center;gap:1px;height:28px;padding:0 4px;background:#31363b;color:#eff0f1;border-bottom:1px solid rgba(255,255,255,.08);flex:none;user-select:none;-webkit-user-select:none;overflow:hidden}
+.kon-mb button{font:inherit;color:inherit;background:none;border:0;height:22px;padding:0 8px;border-radius:3px;white-space:nowrap}
+.kon-mb button:hover{background:rgba(255,255,255,.12)}
+.kon-tabs{display:flex;align-items:center;height:30px;background:#2a2e32;border-bottom:1px solid rgba(255,255,255,.06);flex:none;padding:0 4px;gap:4px;user-select:none;-webkit-user-select:none}
+.kon-tab{display:flex;align-items:center;gap:6px;height:26px;padding:0 10px;border-radius:4px 4px 0 0;background:#1d1d20;color:#eff0f1;font-size:12px;border-top:2px solid #3daee9}
+.kon-term{flex:1;min-height:0;overflow:auto;padding:4px 6px;font:13px/1.2 "DejaVu Sans Mono","Noto Sans Mono",ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap;word-break:break-all;cursor:text;position:relative}
+.kon-term .u{color:#33d17a;font-weight:700}.kon-term .p{color:#2a7bde;font-weight:700}
+.kon-term .cur{display:inline-block;width:.6em;background:#fff;color:#1d1d20;animation:kon-b 1.1s steps(1) infinite}
+.kon-term.blur .cur{animation:none;background:transparent;outline:1px solid #fff;outline-offset:-1px}
+@keyframes kon-b{50%{opacity:0}}
+.kon-term textarea{position:absolute;left:0;top:0;width:1px;height:1px;opacity:0;border:0;padding:0;resize:none;overflow:hidden}
+</style>
 <script id="ub-theme-js">/* ===== Ubuntu (GNOME) teması: Win11 katmanının üstünde çalışır, açıkken #root'a "ubuntu" sınıfı eklenir ===== */
 (function(){
   'use strict';
@@ -15016,6 +15189,7 @@ window.__w7dlPage=function(box,kind){
   function w11li(){var pw=document.getElementById('window-personalize-wrapper'); return pw&&pw.querySelector('[data-test-theme="win11"]');}
   function setTheme(v,save){
     if(v){
+      if(window.__archTheme&&window.__archTheme.on()) window.__archTheme.set(false);
       if(!root.classList.contains('win11')){ sl('w11_theme','1'); var li=w11li(); if(li) li.click(); else { root.classList.remove('win7'); root.classList.add('win11'); } }
       if(save) sl(SNAP,stBg());
       root.classList.add('ubuntu'); root.classList.toggle('win11dark',gl(DARK)!=='0');
@@ -15055,6 +15229,429 @@ window.__w7dlPage=function(box,kind){
   function init(){
     if(!setupLi()) setTimeout(function(){ if(!setupLi()) setTimeout(setupLi,1500); },500);
     if(on()){ setTheme(true,false); setTimeout(function(){ if(on()&&!isUb()) setTheme(true,false); renderDock(true); },1600); }
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',init); else setTimeout(init,0);
+})();</script>
+<script id="ar-konsole-js">/* ===== Konsole: KDE terminal penceresi (şimdilik boş: komut çalıştırmaz, sadece istem gösterir) ===== */
+(function(){
+  'use strict';
+  var $=function(s,r){return (r||document).querySelector(s);};
+  var ID='konsole', NAME='Konsole';
+  var camW=document.getElementById('window-camera-wrapper'), tbMain=$('.taskbar__main'), menu=document.getElementById('start-menu');
+  if(!camW||!tbMain||!menu||!window.__w7add||document.getElementById('window-'+ID+'-wrapper')) return;
+  var ICON='url("data:image/svg+xml,'+encodeURIComponent("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect x='4' y='8' width='56' height='48' rx='6' fill='#232629'/><rect x='4' y='8' width='56' height='10' rx='6' fill='#3daee9'/><rect x='4' y='14' width='56' height='4' fill='#3daee9'/><path d='M14 28l9 7-9 7' fill='none' stroke='#eff0f1' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'/><path d='M28 44h16' stroke='#eff0f1' stroke-width='4' stroke-linecap='round'/></svg>")+'")';
+  window.__konsoleIcon=ICON;
+  /* pencere */
+  var c=camW.cloneNode(true); c.id='window-'+ID+'-wrapper'; c.classList.remove('is-camera');
+  var W0=Math.max(300,Math.min(780,innerWidth-24)), H0=Math.max(260,Math.min(510,innerHeight-90));
+  c.setAttribute('style','transform: translate('+Math.max(8,Math.round((innerWidth-W0)/2))+'px, 30px); width: '+W0+'px; height: '+H0+'px;');
+  $('.window__main',c).id='window-'+ID;
+  var tt=$('[data-test-window-title]',c); if(tt) tt.textContent=' arch@archlinux: ~ ';
+  var ti=$('.window__titlebar-icon',c); if(ti){ti.setAttribute('data-icon',ID);ti.style.setProperty('--icon',ICON);ti.style.backgroundImage=ICON;}
+  var bd=$('.window__body',c); bd.innerHTML=''; bd.style.padding='0'; bd.style.overflow='hidden'; bd.style.background='#1d1d20';
+  bd.innerHTML='<div class="kon"><div class="kon-mb"><button>Dosya</button><button>Düzen</button><button>Görünüm</button><button>Yer İmleri</button><button>Eklentiler</button><button>Ayarlar</button><button>Yardım</button></div>'+
+    '<div class="kon-tabs"><div class="kon-tab">arch@archlinux: ~</div></div>'+
+    '<div class="kon-term blur"><div class="out"></div><div class="ln"></div><textarea aria-label="Terminal girişi" spellcheck="false" autocapitalize="off" autocorrect="off" autocomplete="off" rows="1"></textarea></div></div>';
+  camW.parentNode.appendChild(c);
+  /* görev çubuğu + Başlat menüsü */
+  var t0=$('[data-test-taskbar-item][data-target="camera"]',tbMain), tb=t0.cloneNode(true);
+  tb.setAttribute('data-target',ID); tb.classList.remove('is-opened','is-active'); tb.title=NAME; tb.style.display='none';
+  var tic=$('.taskbar__main-icon',tb); if(tic){tic.setAttribute('data-icon',ID);tic.style.setProperty('--icon',ICON);}
+  tbMain.appendChild(tb);
+  window.__w7add(ID,c,tb);
+  [].slice.call(menu.querySelectorAll('[data-test-program="cmd"]')).forEach(function(cb){
+    var b=cb.cloneNode(true); b.setAttribute('data-test-program',ID); b.setAttribute('data-icon',ID);
+    var l=$('.startmenu__program-label',b); if(l) l.textContent=NAME; var ic=$('.startmenu__program-icon',b); if(ic){ic.setAttribute('data-icon',ID);ic.style.setProperty('--icon',ICON);}
+    cb.parentNode.insertBefore(b,cb.nextSibling);
+  });
+  /* terminal: yazı yazılır, Enter yeni satıra geçer; komut çalıştırılmaz */
+  var term=$('.kon-term',c), out=$('.out',term), ln=$('.ln',term), ta=$('textarea',term);
+  function esc(s){return s.replace(/[&<>]/g,function(x){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[x];});}
+  var PR='<span class="u">arch@archlinux</span>:<span class="p">~</span>$ ';
+  function draw(){ ln.innerHTML=PR+esc(ta.value)+'<span class="cur"> </span>'; term.scrollTop=term.scrollHeight; }
+  ta.addEventListener('input',function(){ ta.value=ta.value.replace(/\n/g,''); draw(); });
+  ta.addEventListener('keydown',function(e){
+    if(e.key==='Enter'){ e.preventDefault(); out.insertAdjacentHTML('beforeend','<div>'+PR+esc(ta.value)+'</div>'); ta.value=''; draw(); }
+    else if(e.key==='l'&&e.ctrlKey){ e.preventDefault(); out.innerHTML=''; draw(); }
+  });
+  ta.addEventListener('focus',function(){term.classList.remove('blur');});
+  ta.addEventListener('blur',function(){term.classList.add('blur');});
+  term.addEventListener('click',function(){ try{ta.focus({preventScroll:true});}catch(e){ta.focus();} });
+  draw();
+})();</script>
+<script id="ar-theme-js">/* ===== Arch Linux (KDE Plasma 6) teması: Win11 katmanının üstünde, açıkken #root'ta "arch" sınıfı ===== */
+(function(){
+  'use strict';
+  var root=document.getElementById('root'); if(!root) return;
+  var KEY='ar_theme',FAV='ar_fav',SNAP='ar_bgsnap',DND='ar_dnd';
+  function gl(k){try{return localStorage.getItem(k);}catch(e){return null;}}
+  function sl(k,v){try{localStorage.setItem(k,v);}catch(e){}}
+  function isAr(){return root.classList.contains('arch');}
+  function $(s,r){return (r||document).querySelector(s);}
+  function $$(s,r){return [].slice.call((r||document).querySelectorAll(s));}
+  function mk(t,c,h){var e=document.createElement(t); if(c) e.className=c; if(h!=null) e.innerHTML=h; return e;}
+  function esc(s){return String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+  function pad(n){return (n<10?'0':'')+n;}
+  function sv(p){return '<svg viewBox="0 0 24 24">'+p+'</svg>';}
+  var LOGO='<svg viewBox="0 0 24 24"><path class="f" d="M12 1.6c-.5 1.2-.8 2-1.3 3.1.3.4.7.8 1.4 1.2-.7-.3-1.2-.6-1.6-.9C9.8 6.6 8.6 8.9 6.3 13c1.8-1 3.2-1.7 4.5-1.9l-.1-.8v-.1c.1-1.2.7-2.1 1.4-2 .7 0 1.3 1.1 1.2 2.3l-.1.6c1.3.3 2.7.9 4.5 1.9-.4-.7-.7-1.2-1-1.8-.5-.4-1-.9-1.9-1.4.7.2 1.2.4 1.5.6C14.9 7.2 14.2 5.6 12 1.6zM4.3 16.6c-.8 1.4-1.6 2.9-2.7 4.9 2.4-1.4 4.3-2.2 6.1-2.5-.1-.4-.1-.8-.1-1.2-1.2.1-2.3.4-3.3-1.2zm15.4 0c-1 1.6-2.1 1.3-3.3 1.2 0 .4 0 .8-.1 1.2 1.8.3 3.7 1.1 6.1 2.5-1.1-2-1.9-3.5-2.7-4.9z"/></svg>';
+  var I={
+    bell:sv('<path d="M10.3 21a2 2 0 0 0 3.4 0"/><path d="M3.3 15.3A1 1 0 0 0 4 17h16a1 1 0 0 0 .7-1.7C19.4 14 18 12.5 18 8A6 6 0 0 0 6 8c0 4.5-1.4 6-2.7 7.3"/>'),
+    bellOff:sv('<path d="M10.3 21a2 2 0 0 0 3.4 0M17 17H4a1 1 0 0 1-.7-1.7C4.6 14 6 12.5 6 8c0-.8.2-1.6.5-2.3M18 8a6 6 0 0 0-8.6-5.4M2 2l20 20"/>'),
+    wifi:sv('<path d="M12 20h.01M2 8.8a15 15 0 0 1 20 0M5 12.9a10 10 0 0 1 14 0M8.5 16.4a5 5 0 0 1 7 0"/>'),
+    wifiOff:sv('<path d="M12 20h.01M8.5 16.4a5 5 0 0 1 7 0M5 12.9a10 10 0 0 1 5.2-2.8M19 12.9a10 10 0 0 0-2.1-1.6M2 8.8a15 15 0 0 1 4.2-2.6M22 8.8a15 15 0 0 0-11.3-3.7M2 2l20 20"/>'),
+    plane:sv('<path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"/>'),
+    bt:sv('<path d="m7 7 10 10-5 5V2l5 5L7 17"/>'),
+    vol:sv('<path d="M11 4.7a.7.7 0 0 0-1.2-.5L6.4 7.6a1.4 1.4 0 0 1-1 .4H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.4a1.4 1.4 0 0 1 1 .4l3.4 3.4a.7.7 0 0 0 1.2-.5zM16 9a5 5 0 0 1 0 6M19.4 18.4a9 9 0 0 0 0-12.8"/>'),
+    mute:sv('<path d="M11 4.7a.7.7 0 0 0-1.2-.5L6.4 7.6a1.4 1.4 0 0 1-1 .4H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.4a1.4 1.4 0 0 1 1 .4l3.4 3.4a.7.7 0 0 0 1.2-.5zM22 9l-6 6M16 9l6 6"/>'),
+    sun:sv('<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M6.3 17.7l-1.4 1.4M19.1 4.9l-1.4 1.4"/>'),
+    moon:sv('<path d="M21 12.5A9 9 0 1 1 11.5 3a7 7 0 0 0 9.5 9.5z"/>'),
+    leaf:sv('<path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.5 19 2c1 2 2 4.2 2 8 0 5.5-4.8 10-10 10Z"/><path d="M2 21c0-3 1.9-5.4 5.1-6"/>'),
+    mon:sv('<rect width="20" height="14" x="2" y="3" rx="2"/><path d="M8 21h8M12 17v4"/>'),
+    star:sv('<path d="M11.5 2.3a.5.5 0 0 1 1 0l2.3 4.7a2 2 0 0 0 1.6 1.2l5.2.7a.5.5 0 0 1 .3.9l-3.8 3.7a2 2 0 0 0-.6 1.8l.9 5.2a.5.5 0 0 1-.8.5l-4.6-2.4a2 2 0 0 0-2 0L6.4 21a.5.5 0 0 1-.8-.5l.9-5.2a2 2 0 0 0-.6-1.8L2.2 9.8a.5.5 0 0 1 .3-.9l5.1-.7a2 2 0 0 0 1.6-1.2z"/>'),
+    grid:sv('<path d="M12 3v18M3 12h18"/><rect x="3" y="3" width="18" height="18" rx="2"/>'),
+    clock:sv('<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>'),
+    home:sv('<path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .7-1.5l7-6a2 2 0 0 1 2.6 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>'),
+    gear:sv('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>'),
+    lock:sv('<rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>'),
+    out:sv('<path d="m16 17 5-5-5-5M21 12H9M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>'),
+    power:sv('<path d="M12 2v10M18.4 6.6a9 9 0 1 1-12.8 0"/>'),
+    restart:sv('<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/>'),
+    user:sv('<path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>'),
+    search:sv('<path d="m21 21-4.3-4.3"/><circle cx="11" cy="11" r="8"/>'),
+    chR:sv('<path d="m9 18 6-6-6-6"/>'), chL:sv('<path d="m15 18-6-6 6-6"/>')
+  };
+  function batSvg(l,c){var w=Math.max(1,12*l);return '<svg viewBox="0 0 24 24"><path d="M22 14v-4"/><rect x="2" y="6" width="16" height="12" rx="2"/><rect class="f" x="4" y="8" width="'+w.toFixed(1)+'" height="8" rx="1"/>'+(c?'<path d="m11 7-3 5h4l-3 5" style="stroke:#3daee9"/>':'')+'</svg>';}
+  var bat={l:1,c:false};
+
+  /* ---------- Win11 katmanı yardımcıları ---------- */
+  function qsS(){var q=window.__w11qs; if(q) return q.S; try{return JSON.parse(gl('w11_qs')||'{}')||{};}catch(e){return {};}}
+  function qsSet(k){var q=window.__w11qs; if(q) q.set(k);}
+  function brRange(){return $('.taskbar-popup.is-battery input[type="range"]');}
+  function volGet(){return window.__w7volGet?window.__w7volGet():60;}
+  function volSet(p){ if(window.__w7volSet) window.__w7volSet(p,false); }
+  function openSettings(){ closeAll(); try{ if(window.__w11openSettings&&window.__w11openSettings()) return; }catch(e){} try{ if(window.__w7open) window.__w7open('cpanel'); }catch(e){} }
+  function powerBtn(){var sm=document.querySelector('[data-test-startmenu]')||document; return $$('button',sm).filter(function(b){return b.textContent.trim()==='Kapat'&&!b.closest('ul.winui-menu')&&!b.closest('[data-test-control]');})[0];}
+
+  /* ---------- programlar ---------- */
+  var iconCache={};
+  function iconOf(k,fb){var s=mk('span','icon'); s.setAttribute('data-icon',k); s.style.cssText='position:absolute;visibility:hidden'; root.appendChild(s); var v=getComputedStyle(s).getPropertyValue('--icon').trim(); s.remove(); return v&&v!=='none'?v:(fb||'');}
+  function progs(){
+    var seen={},out=[];
+    $$('#start-menu .startmenu__program-item').forEach(function(b){
+      var k=b.getAttribute('data-test-program'); if(!k||seen[k]||k==='run') return; seen[k]=1;
+      var ic=b.querySelector('.startmenu__program-icon'), lb=b.querySelector('.startmenu__program-label');
+      var raw=ic?getComputedStyle(ic).getPropertyValue('--icon').trim():''; var key=k+'|'+raw.length;
+      if(!iconCache[key]) iconCache[key]=(k==='konsole'&&window.__konsoleIcon)?window.__konsoleIcon:iconOf(k,raw);
+      out.push({k:k,el:b,icon:iconCache[key],label:(lb||b).textContent.trim()});
+    });
+    return out.sort(function(a,b){return a.label.localeCompare(b.label,'tr');});
+  }
+  function progMap(){var m={}; progs().forEach(function(p){m[p.k]=p;}); return m;}
+  function tbItems(){var m={}; $$('.taskbar__main .taskbar__main-item').forEach(function(b){var k=b.getAttribute('data-target'); if(k) m[k]=b;}); return m;}
+  function favs(){var f=null; try{f=JSON.parse(gl(FAV)||'null');}catch(e){} return Array.isArray(f)?f:['files11','chrome','konsole','cpanel'];}
+  function setFavs(f){sl(FAV,JSON.stringify(f));}
+  var RKEY='ar_rec';
+  function addRec(k){var r=[]; try{r=JSON.parse(gl(RKEY)||'[]')||[];}catch(e){} r=r.filter(function(x){return x!==k;}); r.unshift(k); sl(RKEY,JSON.stringify(r.slice(0,10)));}
+  function recs(){try{return JSON.parse(gl(RKEY)||'[]')||[];}catch(e){return [];}}
+  function launch(k,fresh){
+    closeAll(); addRec(k);
+    var tb=tbItems()[k];
+    if(!fresh&&tb&&tb.classList.contains('is-opened')){ tb.click(); return; }
+    var p=progMap()[k]; if(p){ p.el.click(); return; }
+    try{ if(window.__w7open&&window.__w7open(k)) return; }catch(e){}
+    if(tb) tb.click();
+  }
+
+  /* ---------- arayüz ---------- */
+  var panel,kick,menu,note,pops={},built=false;
+  function build(){
+    if(built) return; built=true;
+    panel=mk('div','arx'); panel.id='ar-panel';
+    panel.innerHTML='<button class="ar-pb ar-launch" data-a="kick" aria-label="Uygulama Başlatıcı" title="Uygulama Başlatıcı">'+LOGO+'</button><i class="ar-sep"></i><div class="tasks"></div><div class="sp"></div>'+
+      '<div class="tray"><button class="ar-pb ar-tb" data-p="note" aria-label="Bildirimler"></button><button class="ar-pb ar-tb" data-p="net" aria-label="Ağ"></button><button class="ar-pb ar-tb" data-p="vol" aria-label="Ses"></button><button class="ar-pb ar-tb" data-p="bat" aria-label="Güç ve pil"></button>'+
+      '<button class="ar-pb ar-clk" data-p="cal" aria-label="Takvim"><b></b><span></span></button><button class="ar-pb ar-desk" data-a="desk" aria-label="Masaüstüne göz at" title="Masaüstüne göz at">'+I.mon+'</button></div>';
+    kick=mk('section','arx'); kick.id='ar-kick'; kick.setAttribute('role','dialog'); kick.setAttribute('aria-label','Uygulama Başlatıcı');
+    kick.innerHTML='<header><span class="av">'+I.user+'</span><strong>arch</strong><label>'+I.search+'<input placeholder="Aramak için yazın" aria-label="Aramak için yazın" autocomplete="off" spellcheck="false"></label></header>'+
+      '<div class="bd"><nav>'+
+        '<button data-v="fav" class="sel">'+I.star+'<span>Favoriler</span>'+I.chR.replace('<svg','<svg class="ch"')+'</button>'+
+        '<button data-v="all">'+I.grid+'<span>Tüm Uygulamalar</span>'+I.chR.replace('<svg','<svg class="ch"')+'</button>'+
+        '<button data-v="rec">'+I.clock+'<span>Son Kullanılanlar</span>'+I.chR.replace('<svg','<svg class="ch"')+'</button>'+
+        '<hr><button data-a="home">'+I.home+'<span>Ev</span></button>'+
+      '</nav><main></main></div>'+
+      '<footer><button data-a="set">'+I.gear+'<span class="lb">Sistem Ayarları</span></button><span class="gap"></span><button data-a="lock" title="Ekranı Kilitle" aria-label="Ekranı Kilitle">'+I.lock+'</button><button data-a="out" title="Oturumu Kapat (Windows\'a dön)" aria-label="Oturumu Kapat">'+I.out+'</button><button data-a="restart" title="Yeniden Başlat" aria-label="Yeniden Başlat">'+I.restart+'</button><button data-a="off">'+I.power+'<span class="lb">Kapat</span></button></footer>';
+    menu=mk('div','arx'); menu.id='ar-menu';
+    note=mk('div','arx'); note.id='ar-note';
+    ['note','net','vol','bat','cal'].forEach(function(n){var p=mk('div','arx ar-pop'); p.id='ar-'+n; p.setAttribute('role','dialog'); pops[n]=p;});
+    [panel,kick,menu,note].concat(Object.keys(pops).map(function(k){return pops[k];})).forEach(function(e){root.appendChild(e); e.addEventListener('contextmenu',function(ev){ if(!ev.target.closest('[data-k]')) ev.preventDefault(); });});
+
+    panel.addEventListener('click',function(e){
+      var b=e.target.closest('[data-a],[data-p],[data-k]'); if(!b) return;
+      if(b.hasAttribute('data-k')){ if(b._lp){b._lp=false;return;} launch(b.getAttribute('data-k')); return; }
+      var a=b.getAttribute('data-a'), p=b.getAttribute('data-p');
+      if(a==='kick') toggleKick(); else if(a==='desk') peekDesktop(); else if(p) togglePop(p);
+    });
+    longPress(panel,'[data-k]',function(el,x,y){ itemMenu(el.getAttribute('data-k'),x,y); });
+    var inp=$('input',kick);
+    inp.addEventListener('input',function(){ view=inp.value.trim()?'search':lastView; renderKick(); });
+    inp.addEventListener('keydown',function(e){ if(e.key==='Enter'){ var f=$('main [data-k]',kick); if(f) launch(f.getAttribute('data-k'),true); } });
+    kick.addEventListener('click',function(e){
+      var n=e.target.closest('nav [data-v]'); if(n){ view=lastView=n.getAttribute('data-v'); inp.value=''; renderKick(); return; }
+      var t=e.target.closest('[data-k]'); if(t){ if(t._lp){t._lp=false;return;} launch(t.getAttribute('data-k'),true); return; }
+      var b=e.target.closest('[data-a]'); if(!b) return; var a=b.getAttribute('data-a');
+      if(a==='set') openSettings(); else if(a==='home'){ launch(progMap().files11?'files11':'w7fm',true); }
+      else if(a==='lock'){ closeAll(); lockScreen(); } else if(a==='out'){ closeAll(); setTheme(false,true); }
+      else if(a==='restart'){ closeAll(); location.reload(); } else if(a==='off'){ closeAll(); var p=powerBtn(); if(p) p.click(); }
+    });
+    longPress(kick,'[data-k]',function(el,x,y){ itemMenu(el.getAttribute('data-k'),x,y); });
+    menu.addEventListener('click',function(e){var b=e.target.closest('button'); if(b&&b._fn){var f=b._fn; closeMenu(); f();}});
+    Object.keys(pops).forEach(function(k){ pops[k].addEventListener('click',function(e){popClick(k,e);}); pops[k].addEventListener('input',popInput); });
+    document.addEventListener('pointerdown',function(e){
+      var t=e.target;
+      if(menu.classList.contains('open')&&!menu.contains(t)) closeMenu();
+      if(kick.classList.contains('open')&&!kick.contains(t)&&!t.closest('[data-a="kick"]')&&!menu.contains(t)) closeKick();
+      Object.keys(pops).forEach(function(k){ if(pops[k].classList.contains('open')&&!pops[k].contains(t)&&!t.closest('[data-p="'+k+'"]')) closePop(k); });
+    },true);
+    document.addEventListener('keydown',function(e){ if(e.key==='Escape'&&isAr()) closeAll(); if(e.key==='Meta'&&isAr()) toggleKick(); });
+    tick(); renderTasks(true); trayIcons();
+  }
+  function closeAll(){ closeKick(); closeMenu(); Object.keys(pops).forEach(closePop); }
+
+  function longPress(host,sel,fn){
+    var tm=null,sx=0,sy=0;
+    host.addEventListener('pointerdown',function(e){ var el=e.target.closest(sel); if(!el||e.button>0) return; sx=e.clientX; sy=e.clientY; clearTimeout(tm); tm=setTimeout(function(){ el._lp=true; fn(el,sx,sy); },520); });
+    host.addEventListener('pointermove',function(e){ if(tm&&(Math.abs(e.clientX-sx)>8||Math.abs(e.clientY-sy)>8)){clearTimeout(tm);tm=null;} });
+    ['pointerup','pointercancel','pointerleave'].forEach(function(n){host.addEventListener(n,function(){clearTimeout(tm);tm=null;});});
+    host.addEventListener('contextmenu',function(e){ var t=e.target.closest(sel); if(!t) return; e.preventDefault(); clearTimeout(tm); fn(t,e.clientX,e.clientY); });
+  }
+  function itemMenu(k,x,y){
+    var p=progMap()[k], tb=tbItems()[k], f=favs(), isF=f.indexOf(k)>-1, run=tb&&tb.classList.contains('is-opened');
+    menu.innerHTML='';
+    function add(t,fn){var b=mk('button'); b.textContent=t; b._fn=fn; menu.appendChild(b);}
+    if(p) add(run?'Yeni Örnek Başlat':'Aç',function(){ launch(k,true); });
+    if(run) add('Göster / Küçült',function(){ launch(k); });
+    menu.appendChild(mk('hr'));
+    add(isF?'Görev Yöneticisinden Ayır':'Görev Yöneticisine Sabitle',function(){ var g=favs().filter(function(x){return x!==k;}); if(!isF) g.push(k); setFavs(g); renderTasks(true); if(kick.classList.contains('open')) renderKick(); });
+    if(run){ menu.appendChild(mk('hr')); add('Kapat',function(){ var w=document.getElementById('window-'+k+'-wrapper'), c=w&&w.querySelector('[data-test-control="close"]'); if(c) c.click(); }); }
+    if(menu.lastChild&&menu.lastChild.tagName==='HR') menu.lastChild.remove();
+    menu.classList.add('open');
+    var r=menu.getBoundingClientRect();
+    menu.style.left=Math.max(4,Math.min(innerWidth-r.width-4,x))+'px'; menu.style.top=Math.max(4,Math.min(innerHeight-r.height-4,y-r.height))+'px';
+  }
+  function closeMenu(){ if(menu) menu.classList.remove('open'); }
+
+  /* ---------- görev yöneticisi (paneldeki simgeler) ---------- */
+  var sig='';
+  function renderTasks(force){
+    if(!built) return;
+    var P=progMap(), T=tbItems(), list=[], seen={};
+    favs().forEach(function(k){ if((P[k]||T[k])&&!seen[k]){seen[k]=1; list.push(k);} });
+    Object.keys(T).forEach(function(k){ if(T[k].classList.contains('is-opened')&&!seen[k]){seen[k]=1; list.push(k);} });
+    var items=list.map(function(k){
+      var tb=T[k], run=!!(tb&&tb.classList.contains('is-opened')), act=!!(run&&tb.classList.contains('is-active')&&document.getElementById('window-'+k+'-wrapper')&&document.getElementById('window-'+k+'-wrapper').style.display!=='none');
+      var ic=''; if(tb){var s=tb.querySelector('.taskbar__main-icon'); if(s) ic=getComputedStyle(s).getPropertyValue('--icon').trim();}
+      if(!ic&&P[k]) ic=P[k].icon;
+      return {k:k,run:run,act:act,ic:ic,nm:P[k]?P[k].label:k};
+    });
+    var s=JSON.stringify(items.map(function(i){return [i.k,i.run,i.act,i.ic.length];}));
+    if(!force&&s===sig) return; sig=s;
+    var box=$('.tasks',panel); box.innerHTML='';
+    items.forEach(function(i){
+      var b=mk('button','ar-pb ar-task'+(i.act?' act':'')); b.setAttribute('data-k',i.k); b.title=i.nm; b.setAttribute('aria-label',i.nm);
+      var c=mk('span','ic'); c.style.setProperty('--icon',i.ic); b.appendChild(c); if(i.run) b.appendChild(mk('i'));
+      box.appendChild(b);
+    });
+  }
+  /* masaüstüne göz at: açık pencereleri küçült / geri getir */
+  var peeked=[];
+  function peekDesktop(){
+    closeAll();
+    if(peeked.length){ peeked.forEach(function(k){var t=tbItems()[k]; if(t) t.click();}); peeked=[]; return; }
+    $$('.window__wrapper').forEach(function(w){
+      if(w.style.display==='none'||!w.offsetWidth) return;
+      var m=w.querySelector('[data-test-control="minimize"]'); var k=w.id.replace(/^window-/,'').replace(/-wrapper$/,'');
+      if(m){ m.click(); peeked.push(k); }
+    });
+  }
+
+  /* ---------- Kickoff ---------- */
+  var view='fav',lastView='fav';
+  function toggleKick(){ if(kick.classList.contains('open')) closeKick(); else openKick(); }
+  function openKick(){
+    closeAll(); view=lastView='fav'; var inp=$('input',kick); inp.value=''; renderKick();
+    kick.classList.add('open'); $('[data-a="kick"]',panel).classList.add('on');
+    if(matchMedia('(pointer:fine)').matches) setTimeout(function(){try{inp.focus();}catch(e){}},40);
+  }
+  function closeKick(){ if(!kick) return; kick.classList.remove('open'); var b=$('[data-a="kick"]',panel); if(b) b.classList.remove('on'); var i=$('input',kick); if(i) i.blur(); }
+  function renderKick(){
+    $$('nav [data-v]',kick).forEach(function(b){b.classList.toggle('sel',b.getAttribute('data-v')===(view==='search'?lastView:view));});
+    var m=$('main',kick); m.innerHTML=''; var P=progs(), M={}; P.forEach(function(p){M[p.k]=p;});
+    if(view==='fav'){
+      var g=mk('div','fav'); favs().forEach(function(k){var p=M[k]; if(!p) return; var b=mk('button'); b.setAttribute('data-k',k); b.title=p.label; var c=mk('span','ic'); c.style.setProperty('--icon',p.icon); b.appendChild(c); var l=mk('span'); l.textContent=p.label; b.appendChild(l); g.appendChild(b);});
+      P.forEach(function(p){ if(favs().indexOf(p.k)<0&&g.children.length<12){ var b=mk('button'); b.setAttribute('data-k',p.k); b.title=p.label; var c=mk('span','ic'); c.style.setProperty('--icon',p.icon); b.appendChild(c); var l=mk('span'); l.textContent=p.label; b.appendChild(l); g.appendChild(b);} });
+      m.appendChild(g); return;
+    }
+    var L=P;
+    if(view==='rec') L=recs().map(function(k){return M[k];}).filter(Boolean);
+    if(view==='search'){ var q=$('input',kick).value.trim().toLocaleLowerCase('tr'); L=P.filter(function(p){return p.label.toLocaleLowerCase('tr').indexOf(q)>-1;}); }
+    if(!L.length){ m.appendChild(mk('div','none',view==='rec'?'Henüz uygulama açılmadı':'Sonuç bulunamadı')); return; }
+    var box=mk('div','lst');
+    L.forEach(function(p,i){ var b=mk('button',view==='search'&&i===0?'sel':''); b.setAttribute('data-k',p.k); var c=mk('span','ic'); c.style.setProperty('--icon',p.icon); b.appendChild(c); b.appendChild(mk('span','tx','<b>'+esc(p.label)+'</b><small>Uygulama</small>')); box.appendChild(b); });
+    m.appendChild(box);
+  }
+
+  /* ---------- tepsi açılırları ---------- */
+  function togglePop(n){ if(pops[n].classList.contains('open')) closePop(n); else { closeAll(); note.classList.remove('open'); renderPop(n); pops[n].classList.add('open'); var b=$('[data-p="'+n+'"]',panel); if(b) b.classList.add('on'); } }
+  function closePop(n){ if(!pops[n]) return; pops[n].classList.remove('open'); var b=panel&&$('[data-p="'+n+'"]',panel); if(b) b.classList.remove('on'); }
+  function chk(on,a){return '<button class="ar-chk'+(on?' on':'')+'" data-a="'+a+'" role="switch" aria-checked="'+(on?'true':'false')+'"></button>';}
+  var calV=null,calSel=null;
+  var MON=['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'], WD=['Pazar','Pazartesi','Salı','Çarşamba','Perşembe','Cuma','Cumartesi'];
+  function renderPop(n){
+    var p=pops[n], S=qsS(), h='';
+    if(n==='note'){
+      h='<h3>Bildirimler<span class="x"></span>'+(notes.length?'<button class="ar-btn" data-a="clr">Temizle</button>':'')+'</h3>';
+      h+=notes.length?notes.slice().reverse().map(function(x){return '<div class="nc"><span>'+esc(x.m)+'</span><small>'+pad(x.t.getHours())+':'+pad(x.t.getMinutes())+'</small></div>';}).join(''):'<div class="empty">Bildirim yok</div>';
+      h+='<div class="row">'+I.bellOff+'<span class="t">Rahatsız Etme</span>'+chk(gl(DND)==='1','dnd')+'</div>';
+    } else if(n==='net'){
+      h='<h3>Ağlar</h3>';
+      h+='<div class="row">'+I.wifi+'<span class="t">Wi-Fi<small>'+(S.wifi&&!S.air?'Bağlı: Ev':'Kapalı')+'</small></span>'+chk(!!S.wifi&&!S.air,'wifi')+'</div>';
+      h+='<div class="row">'+I.bt+'<span class="t">Bluetooth</span>'+chk(!!S.bt&&!S.air,'bt')+'</div>';
+      h+='<div class="row">'+I.plane+'<span class="t">Uçak Kipi</span>'+chk(!!S.air,'air')+'</div>';
+      h+='<button class="ar-btn" data-a="set">Ağ ayarlarını aç…</button>';
+    } else if(n==='vol'){
+      var v=Math.round(volGet());
+      h='<h3>Ses Düzeyi</h3><div class="sl"><button data-a="mute" aria-label="Sessiz">'+(v<=0?I.mute:I.vol)+'</button><input class="ar-range" type="range" min="0" max="100" value="'+v+'" data-s="vo" style="--v:'+v+'%" aria-label="Ses"><b>'+v+'%</b></div><div class="row" style="opacity:.75">'+I.vol+'<span class="t">Hoparlör<small>Varsayılan çıkış aygıtı</small></span></div>';
+    } else if(n==='bat'){
+      var r=brRange(), bp=100; if(r){var mn=+r.min||0,mx=+r.max||1; bp=Math.round((+r.value-mn)/(mx-mn)*100);}
+      var eco=(function(){var x=document.querySelector('input[name="power-plan"]#power-saver'); return x?x.checked:!!S.eco;})();
+      h='<h3>Güç ve Pil</h3><div class="row">'+batSvg(bat.l,bat.c)+'<span class="t">Pil<small>%'+Math.round(bat.l*100)+(bat.c?' · Şarj oluyor':' · Pilde')+'</small></span></div>';
+      h+='<div class="sl">'+I.sun+'<input class="ar-range" type="range" min="0" max="100" value="'+bp+'" data-s="br" style="--v:'+bp+'%" aria-label="Ekran parlaklığı"><b>'+bp+'%</b></div>';
+      h+='<div class="row">'+I.leaf+'<span class="t">Güç Tasarrufu</span>'+chk(eco,'eco')+'</div><div class="row">'+I.moon+'<span class="t">Gece Işığı</span>'+chk(!!S.night,'night')+'</div>';
+    } else if(n==='cal'){
+      var now=new Date(); if(!calV) calV=new Date(now.getFullYear(),now.getMonth(),1);
+      var y=calV.getFullYear(), m=calV.getMonth();
+      h='<div class="today"><strong>'+WD[now.getDay()]+'</strong><span>'+now.getDate()+' '+MON[now.getMonth()]+' '+now.getFullYear()+'</span></div>';
+      h+='<header><button data-a="pm" aria-label="Önceki ay">'+I.chL+'</button><strong>'+MON[m]+' '+y+'</strong><button data-a="nm" aria-label="Sonraki ay">'+I.chR+'</button></header><div class="gr">';
+      ['Pt','Sa','Ça','Pe','Cu','Ct','Pz'].forEach(function(d){h+='<b>'+d+'</b>';});
+      var off=(new Date(y,m,1).getDay()+6)%7;
+      for(var i=0;i<42;i++){var d=new Date(y,m,1-off+i); var c=(d.getMonth()!==m?'mu ':'')+(d.toDateString()===now.toDateString()?'td ':'')+(calSel&&d.toDateString()===calSel.toDateString()?'sel':''); h+='<button class="'+c+'" data-a="day" data-t="'+d.getTime()+'">'+d.getDate()+'</button>';}
+      h+='</div><p>'+(calSel?calSel.getDate()+' '+MON[calSel.getMonth()]+': ':'')+'Etkinlik yok</p>';
+    }
+    p.innerHTML=h;
+  }
+  function popClick(n,e){
+    var b=e.target.closest('[data-a]'); if(!b) return; var a=b.getAttribute('data-a');
+    if(a==='wifi'||a==='bt'||a==='air'||a==='eco'||a==='night'){ qsSet(a); setTimeout(function(){renderPop(n);trayIcons();},30); }
+    else if(a==='dnd'){ sl(DND,gl(DND)==='1'?'0':'1'); renderPop(n); trayIcons(); }
+    else if(a==='clr'){ notes=[]; renderPop(n); }
+    else if(a==='set') openSettings();
+    else if(a==='mute'){ var v=volGet(); if(v>0){lastVol=v; volSet(0);} else volSet(lastVol||60); setTimeout(function(){renderPop(n);trayIcons();},40); }
+    else if(a==='pm'){ calV=new Date(calV.getFullYear(),calV.getMonth()-1,1); renderPop(n); }
+    else if(a==='nm'){ calV=new Date(calV.getFullYear(),calV.getMonth()+1,1); renderPop(n); }
+    else if(a==='day'){ calSel=new Date(+b.getAttribute('data-t')); renderPop(n); }
+  }
+  var lastVol=60;
+  function popInput(e){
+    var s=e.target.getAttribute&&e.target.getAttribute('data-s'); if(!s) return;
+    var p=+e.target.value; e.target.style.setProperty('--v',p+'%'); var lb=e.target.parentNode.querySelector('b'); if(lb) lb.textContent=p+'%';
+    if(s==='vo'){ volSet(p); trayIcons(); var mb=e.target.parentNode.querySelector('[data-a="mute"]'); if(mb) mb.innerHTML=p<=0?I.mute:I.vol; }
+    else { var r=brRange(); if(!r) return; var mn=+r.min||0,mx=+r.max||1; r.value=mn+(mx-mn)*p/100; r.dispatchEvent(new Event('input',{bubbles:true})); }
+  }
+
+  /* ---------- saat, tepsi simgeleri, kilit ---------- */
+  function tick(){
+    if(!built||!isAr()) return; var d=new Date();
+    var t=pad(d.getHours())+':'+pad(d.getMinutes()), ds=pad(d.getDate())+'.'+pad(d.getMonth()+1)+'.'+d.getFullYear();
+    var c=$('.ar-clk',panel); if(c){ var b=c.querySelector('b'), s=c.querySelector('span'); if(b.textContent!==t) b.textContent=t; if(s.textContent!==ds) s.textContent=ds; }
+  }
+  function setH(el,h){ if(el&&el._h!==h){ el.innerHTML=h; el._h=h; } }
+  function trayIcons(){
+    if(!built) return; var S=qsS(), v=volGet();
+    setH($('[data-p="note"]',panel),gl(DND)==='1'?I.bellOff:I.bell);
+    setH($('[data-p="net"]',panel),S.air?I.plane:(S.wifi===0?I.wifiOff:I.wifi));
+    setH($('[data-p="vol"]',panel),v<=0?I.mute:I.vol);
+    setH($('[data-p="bat"]',panel),batSvg(bat.l,bat.c));
+  }
+  function lockScreen(){
+    var l=mk('div','arx'), d=new Date();
+    l.style.cssText='position:fixed;inset:0;z-index:2147480200;background:linear-gradient(180deg,#0d1117,#123049);color:#eff0f1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;user-select:none';
+    l.innerHTML='<div style="font-size:clamp(48px,13vh,100px);font-weight:300;line-height:1">'+pad(d.getHours())+':'+pad(d.getMinutes())+'</div><div style="font-size:17px;opacity:.85">'+d.getDate()+' '+MON[d.getMonth()]+' '+d.getFullYear()+', '+WD[d.getDay()]+'</div><div style="margin-top:28px;display:flex;flex-direction:column;align-items:center;gap:8px"><span style="width:64px;height:64px;border-radius:50%;background:#4d5359;display:flex;align-items:center;justify-content:center">'+I.user.replace('<svg','<svg style="width:36px;height:36px"')+'</span><b style="font-weight:500">arch</b><span style="opacity:.6;font-size:12px">Kilidi açmak için dokun</span></div>';
+    l.addEventListener('click',function(){ l.remove(); });
+    root.appendChild(l);
+  }
+
+  /* ---------- bildirimler ---------- */
+  var notes=[],prevToast=null,nTm=null;
+  function hookToast(){
+    if(prevToast||typeof window.__w7toast!=='function') return;
+    prevToast=window.__w7toast;
+    window.__w7toast=function(m){
+      if(!isAr()) return prevToast.apply(this,arguments);
+      notes.push({m:String(m),t:new Date()}); if(notes.length>30) notes.shift();
+      if(pops.note&&pops.note.classList.contains('open')) renderPop('note');
+      if(gl(DND)==='1') return;
+      note.innerHTML='<b>Sistem</b>'+esc(m); note.classList.remove('open'); void note.offsetWidth; note.classList.add('open');
+      clearTimeout(nTm); nTm=setTimeout(function(){note.classList.remove('open');},3800);
+    };
+  }
+
+  /* ---------- pencere sığdırma ---------- */
+  var seenWin={};
+  function fitWindows(){
+    var dk=document.getElementById('desktop'); if(!dk) return; var DW=dk.clientWidth, DH=dk.clientHeight; if(!DW||!DH) return;
+    $$('.window__wrapper').forEach(function(w){
+      var vis=w.style.display!=='none'&&w.offsetWidth>0;
+      if(!vis){ delete seenWin[w.id]; return; } if(seenWin[w.id]) return; seenWin[w.id]=1;
+      if(w.getAttribute('data-max')==='1') return;
+      var m=/translate\(([-\d.]+)px,\s*([-\d.]+)px\)/.exec(w.style.transform||''); if(!m) return;
+      var x=+m[1], y=+m[2], W=w.offsetWidth, H=w.offsetHeight, ch=false;
+      if(W>DW){W=DW; w.style.width=W+'px'; ch=true;} if(H>DH){H=DH; w.style.height=H+'px'; ch=true;}
+      if(x+W>DW){x=Math.max(0,DW-W); ch=true;} if(y+H>DH){y=Math.max(0,DH-H); ch=true;}
+      if(ch){ w.style.transform='translate('+x+'px,'+y+'px)'; w.style.setProperty('--window-x',x+'px'); w.style.setProperty('--window-y',y+'px'); }
+    });
+  }
+
+  /* ---------- duvar kağıdı ---------- */
+  function stBg(){try{return JSON.stringify((JSON.parse(gl('w7_personalize')||'{}')||{}).bg||null)+'|'+(gl('w11_bgsnap')||'');}catch(e){return 'null';}}
+  function syncWp(){ root.classList.toggle('ar-wp',isAr()&&gl(SNAP)===stBg()); }
+
+  /* ---------- tema aç/kapat ---------- */
+  function w11li(){var pw=document.getElementById('window-personalize-wrapper'); return pw&&pw.querySelector('[data-test-theme="win11"]');}
+  function setTheme(v,save){
+    if(v){
+      if(window.__ubTheme&&window.__ubTheme.on()) window.__ubTheme.set(false);
+      if(!root.classList.contains('win11')){ sl('w11_theme','1'); var li=w11li(); if(li) li.click(); else { root.classList.remove('win7'); root.classList.add('win11'); } }
+      if(save) sl(SNAP,stBg());
+      root.classList.add('arch','win11dark');
+      build(); hookToast(); tick(); renderTasks(true); trayIcons();
+    } else { closeAll(); root.classList.remove('arch','ar-wp'); }
+    if(save) sl(KEY,v?'1':'0');
+    syncWp();
+  }
+  window.__archTheme={on:function(){return isAr();},set:function(v){setTheme(!!v,true);}};
+
+  var THUMB='url("data:image/svg+xml,'+encodeURIComponent("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 160 100'><defs><linearGradient id='g' x1='0' y1='0' x2='0' y2='1'><stop offset='0' stop-color='#0d1117'/><stop offset='1' stop-color='#123049'/></linearGradient></defs><rect width='160' height='100' fill='url(#g)'/><path d='M80 22l-15 32c6-3 10-4 15-4s9 1 15 4z' fill='#1793d1' opacity='.5'/><rect x='28' y='18' width='80' height='54' rx='3' fill='#31363b'/><rect x='28' y='18' width='80' height='7' rx='3' fill='#3b4045'/><rect y='91' width='160' height='9' fill='#202326'/><circle cx='6' cy='95.5' r='3' fill='#1793d1'/></svg>")+'")';
+  function setupLi(){
+    var pw=document.getElementById('window-personalize-wrapper'); if(!pw) return false;
+    var first=pw.querySelector('[data-test-theme]'); if(!first) return false;
+    if(pw.querySelector('[data-test-theme="arch"]')) return true;
+    var li=first.cloneNode(true); li.setAttribute('data-test-theme','arch'); li.classList.remove('is-selected');
+    var lb=li.querySelector('.personalize__theme-label'); if(lb) lb.textContent='Arch Linux';
+    var cl=li.querySelector('.personalize__theme-color'); if(cl){cl.setAttribute('title','#1793d1');cl.style.background='#1793d1';}
+    var bg=li.querySelector('.personalize__theme-bg'); if(bg) bg.style.setProperty('--bg',THUMB);
+    first.parentNode.appendChild(li); return true;
+  }
+  document.addEventListener('click',function(e){
+    var t=e.target&&e.target.closest&&e.target.closest('[data-test-theme]'); if(!t||!t.closest('#window-personalize-wrapper,#window-personalize')) return;
+    if(t.getAttribute('data-test-theme')==='arch'){ e.stopPropagation(); e.preventDefault(); setTheme(true,true); }
+    else if(isAr()) setTheme(false,true);
+  },true);
+  new MutationObserver(function(){ if(isAr()&&!root.classList.contains('win11')) setTheme(false,true); if(isAr()&&root.classList.contains('ubuntu')) setTheme(false,true); }).observe(root,{attributes:true,attributeFilter:['class']});
+  if(navigator.getBattery){ navigator.getBattery().then(function(b){ var u=function(){bat={l:b.level,c:b.charging}; trayIcons();}; u(); ['levelchange','chargingchange'].forEach(function(n){b.addEventListener(n,u);}); }).catch(function(){}); }
+  setInterval(function(){ if(!isAr()) return; fitWindows(); tick(); renderTasks(false); trayIcons(); syncWp(); hookToast(); },800);
+  window.addEventListener('resize',function(){ closeMenu(); });
+  function init(){
+    if(!setupLi()) setTimeout(function(){ if(!setupLi()) setTimeout(setupLi,1500); },500);
+    if(gl(KEY)==='1'){ setTheme(true,false); setTimeout(function(){ if(gl(KEY)==='1'&&!isAr()) setTheme(true,false); renderTasks(true); },1600); }
   }
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',init); else setTimeout(init,0);
 })();</script>
