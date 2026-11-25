@@ -75,6 +75,39 @@ local function corner(parent: Instance, scale: number?)
 	c.Parent = parent
 end
 
+-- Hata düzeltme 5: Roblox'un eski davranışında ClipsDescendants DÖNDÜRÜLMÜŞ öğeleri kırpmaz. Yollar ve rota
+-- eskiden Rotation ile çiziliyordu (dikey yol = 90°) ve mini haritanın dışına, yönlendirme panelinin üstüne
+-- taşıyordu. Harita artık hiç döndürülmüş öğe kullanmaz: eksene paralel çizgi = tek dikdörtgen, eğik çizgi =
+-- üst üste binen yuvarlak noktalar. Böylece kırpma her cihazda ve her Roblox sürümünde güvenilir.
+local DOT_STEP = 0.45 -- eğik çizgide nokta aralığı / çizgi kalınlığı
+
+-- a→b çizgisini döndürmesiz parçalara böler. emit(x, z, along, length): along "X" | "Z" (dikdörtgen, uzunluk
+-- boyunca) veya "D" (nokta; boyut = kalınlık). width: nokta aralığı için kalınlık.
+local function lineParts(ax: number, az: number, bx: number, bz: number, width: number, emit: (number, number, string, number) -> ())
+	local dx, dz = bx - ax, bz - az
+	if math.abs(dz) < 0.05 then
+		emit((ax + bx) / 2, (az + bz) / 2, "X", math.abs(dx))
+	elseif math.abs(dx) < 0.05 then
+		emit((ax + bx) / 2, (az + bz) / 2, "Z", math.abs(dz))
+	else
+		local length = math.sqrt(dx * dx + dz * dz)
+		local n = math.max(math.ceil(length / math.max(width * DOT_STEP, 0.5)), 1)
+		for i = 0, n do
+			local t = i / n
+			emit(ax + dx * t, az + dz * t, "D", 0)
+		end
+	end
+end
+
+local function partSize(along: string, length: number, width: number, extend: number): UDim2
+	if along == "X" then
+		return UDim2.fromOffset(length + extend, width)
+	elseif along == "Z" then
+		return UDim2.fromOffset(width, length + extend)
+	end
+	return UDim2.fromOffset(width, width)
+end
+
 -- opts: Detail = "Mini" | "Full"
 function MapCanvas.new(parent: GuiObject, opts)
 	local self = setmetatable({}, MapCanvas)
@@ -159,18 +192,21 @@ function MapCanvas.new(parent: GuiObject, opts)
 		local a, b = data.Nodes[e.A], data.Nodes[e.B]
 		if a and b then
 			local ax, az, bx, bz = a.Position.X, a.Position.Z, b.Position.X, b.Position.Z
-			local dx, dz = bx - ax, bz - az
-			local length = math.sqrt(dx * dx + dz * dz)
 			local width = math.max(e.Width, 16)
-			local mx, mz = (ax + bx) / 2, (az + bz) / 2
-			frame(tileFor(mx, mz), {
-				AnchorPoint = Vector2.new(0.5, 0.5),
-				Position = UDim2.fromOffset(mx + half, mz + half),
-				Size = UDim2.fromOffset(length, width),
-				Rotation = math.deg(math.atan2(dz, dx)),
-				BackgroundColor3 = COLORS[e.Kind] or COLORS.street,
-				ZIndex = if e.Kind == "freeway" or e.Kind == "ramp" then 5 else 4,
-			})
+			local color = COLORS[e.Kind] or COLORS.street
+			local z = if e.Kind == "freeway" or e.Kind == "ramp" then 5 else 4
+			lineParts(ax, az, bx, bz, width, function(x, zz, along, length)
+				local part = frame(tileFor(x, zz), {
+					AnchorPoint = Vector2.new(0.5, 0.5),
+					Position = UDim2.fromOffset(x + half, zz + half),
+					Size = partSize(along, length, width, 0),
+					BackgroundColor3 = color,
+					ZIndex = z,
+				})
+				if along == "D" then
+					corner(part)
+				end
+			end)
 			nodeWidth[e.A] = math.max(nodeWidth[e.A] or 0, width)
 			nodeWidth[e.B] = math.max(nodeWidth[e.B] or 0, width)
 		end
@@ -277,10 +313,17 @@ function MapCanvas:SetView(cx: number, cz: number, scale: number, viewport: Vect
 			item.Gui.Size = UDim2.fromOffset(item.Pixels / scale, item.Pixels / scale)
 		end
 		local thickness = (if self.Detail == "Full" then 5 else 4) / scale
-		for _, seg in self.RouteSegments do
-			seg.Size = UDim2.fromOffset(seg.Size.X.Offset, thickness * (seg:GetAttribute("Weight") or 1))
+		if self.RouteDotThickness and thickness < self.RouteDotThickness * 0.6 then
+			-- yakınlaşınca eğik rota noktaları arasında boşluk kalmasın: noktaları yeni kalınlıkla yeniden diz
+			self:SetRoute(self.CurrentRoute)
+		else
+			for _, seg in self.RouteSegments do
+				local t = thickness * (seg:GetAttribute("Weight") or 1)
+				seg.Size = partSize(seg:GetAttribute("Along") or "X", seg:GetAttribute("Length") or 0, t, t)
+			end
 		end
 	end
+	self.ViewX, self.ViewZ, self.Viewport = cx, cz, viewport
 	self.Root.Position = UDim2.fromOffset(viewport.X / 2 - (cx + half) * scale, viewport.Y / 2 - (cz + half) * scale)
 	-- Karo görünürlüğü: sadece aralık değişince
 	local halfW, halfH = viewport.X / 2 / scale + 200, viewport.Y / 2 / scale + 200
@@ -300,6 +343,15 @@ function MapCanvas:SetPlayer(x: number, z: number, headingDeg: number)
 	if self.Player then
 		self.Player.Position = UDim2.fromOffset(x + self.Half, z + self.Half)
 		self.Player.Rotation = headingDeg
+		-- Ok döndürülmüş bir öğedir; görüntü alanının dışındaysa gizle (kırpmaya güvenme)
+		local viewport = self.Viewport
+		if viewport then
+			local scale = math.max(self.Scale, 0.0001)
+			local px = (x - self.ViewX) * scale + viewport.X / 2
+			local py = (z - self.ViewZ) * scale + viewport.Y / 2
+			local r = 14
+			self.Player.Visible = px >= r and px <= viewport.X - r and py >= r and py <= viewport.Y - r
+		end
 	end
 end
 
@@ -318,6 +370,8 @@ function MapCanvas:SetRoute(route)
 		seg:Destroy()
 	end
 	table.clear(self.RouteSegments)
+	self.CurrentRoute = route
+	self.RouteDotThickness = nil
 	if not route then
 		return
 	end
@@ -326,22 +380,28 @@ function MapCanvas:SetRoute(route)
 	local thickness = (if self.Detail == "Full" then 5 else 4) / scale
 	local function segment(a, b, color: Color3, weight: number, transparency: number)
 		local dx, dz = b.X - a.X, b.Z - a.Z
-		local length = math.sqrt(dx * dx + dz * dz)
-		if length < 0.5 then
+		if dx * dx + dz * dz < 0.25 then
 			return
 		end
-		local seg = frame(self.RouteLayer, {
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			Position = UDim2.fromOffset((a.X + b.X) / 2 + half, (a.Z + b.Z) / 2 + half),
-			Size = UDim2.fromOffset(length + thickness * weight, thickness * weight),
-			Rotation = math.deg(math.atan2(dz, dx)),
-			BackgroundColor3 = color,
-			BackgroundTransparency = transparency,
-			ZIndex = 6,
-		})
-		seg:SetAttribute("Weight", weight)
-		corner(seg)
-		table.insert(self.RouteSegments, seg)
+		local t = thickness * weight
+		lineParts(a.X, a.Z, b.X, b.Z, t, function(x, z, along, length)
+			local seg = frame(self.RouteLayer, {
+				AnchorPoint = Vector2.new(0.5, 0.5),
+				Position = UDim2.fromOffset(x + half, z + half),
+				Size = partSize(along, length, t, t),
+				BackgroundColor3 = color,
+				BackgroundTransparency = transparency,
+				ZIndex = 6,
+			})
+			seg:SetAttribute("Weight", weight)
+			seg:SetAttribute("Along", along)
+			seg:SetAttribute("Length", length)
+			corner(seg)
+			table.insert(self.RouteSegments, seg)
+			if along == "D" then
+				self.RouteDotThickness = thickness
+			end
+		end)
 	end
 	local points = route.Points
 	for i = 1, #points - 1 do

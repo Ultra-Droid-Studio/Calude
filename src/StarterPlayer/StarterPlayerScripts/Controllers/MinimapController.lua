@@ -34,8 +34,7 @@ local REFERENCE_SIZE = 200 -- yukarıdaki ölçekler bu piksel çaplı harita i�
 
 local gui: ScreenGui
 local root: Frame
-local clip: CanvasGroup
-local clipFrame: Frame -- CanvasGroup'u saran dikdörtgen kırpıcı (güvenlik katmanı)
+local clip: Frame
 local canvas
 local arrow: Frame
 local northTag: TextLabel
@@ -98,21 +97,17 @@ local function build()
 	})
 	root = new("Frame", { Name = "Root", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Parent = gui })
 
-	-- Harita: yuvarlak kırpma için tek küçük CanvasGroup
-	-- Hata düzeltme 4: harita tuvali 10240×10240'lık bir çerçevedir ve ekrana taşmasını SADECE CanvasGroup
-	-- engelliyordu. CanvasGroup düşük bellekte/desteklemeyen cihazda düzgün kırpamazsa koyu tuval bütün ekranı
-	-- kaplıyordu (oyun içi siyah katman). Artık dışta ClipsDescendants'lı sıradan bir Frame de kırpar;
-	-- en kötü durumda taşma mini haritanın kare alanında kalır. Arka plan rengi tuvalden buraya taşındı.
-	clipFrame = new("Frame", { Name = "MinimapClip", BackgroundTransparency = 1, ClipsDescendants = true, Parent = root })
-	clip = new("CanvasGroup", {
+	-- Harita çerçevesi (Hata düzeltme 4 + 5): sabit kare alan, ClipsDescendants'lı SIRADAN Frame. CanvasGroup
+	-- kullanılmaz (düşük bellekte kırpamayıp 10240²'lik koyu tuvali ekrana yayıyordu); harita tuvalinde döndürülmüş
+	-- öğe yok, bu yüzden bu kırpma her cihazda tam çalışır. Görünür kenarlık = "Ring" (aynı dikdörtgen).
+	-- Köşeler bilerek düz: ClipsDescendants UICorner'a uymaz, yuvarlak köşede harita dışarı taşardı.
+	clip = new("Frame", {
 		Name = "Minimap", BackgroundColor3 = MapCanvas.LandColor, BackgroundTransparency = 0,
-		Size = UDim2.fromScale(1, 1), Parent = clipFrame,
+		ClipsDescendants = true, Parent = root,
 	})
-	new("UICorner", { CornerRadius = UDim.new(0.5, 0), Parent = clip })
 	canvas = MapCanvas.new(clip, { Detail = "Mini" })
-	local ring = new("Frame", { Name = "Ring", BackgroundTransparency = 1, Parent = root })
-	new("UICorner", { CornerRadius = UDim.new(0.5, 0), Parent = ring })
-	new("UIStroke", { Color = C.White, Transparency = 0.6, Thickness = 2, Parent = ring })
+	local ring = new("Frame", { Name = "Ring", BackgroundTransparency = 1, ZIndex = 4, Parent = root })
+	new("UIStroke", { Color = C.White, Transparency = 0.35, Thickness = 2, Parent = ring })
 	arrow = MapCanvas.MakeArrow(root, 5)
 	northTag = new("TextLabel", {
 		Name = "North", BackgroundColor3 = C.Background, BackgroundTransparency = 0.2, Text = "N", TextScaled = true,
@@ -128,7 +123,7 @@ local function build()
 	end)
 
 	-- Yönlendirme paneli
-	guide = new("Frame", { Name = "Guidance", BackgroundColor3 = C.Background, BackgroundTransparency = 0.15, Visible = false, Parent = root })
+	guide = new("Frame", { Name = "Guidance", BackgroundColor3 = C.Background, BackgroundTransparency = 0.15, Visible = false, ZIndex = 10, Parent = root })
 	new("UICorner", { CornerRadius = UDim.new(0, 10), Parent = guide })
 	new("UIStroke", { Color = C.AccentAlt, Transparency = 0.55, Thickness = 1.5, Parent = guide })
 	new("UIPadding", { PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8), PaddingTop = UDim.new(0, 4), PaddingBottom = UDim.new(0, 4), Parent = guide })
@@ -173,14 +168,14 @@ local function layout()
 		rects = DrivingLayout.Desktop(area.X, area.Y)
 	end
 	local m = rects.Minimap
-	place(clipFrame, m)
+	place(clip, m)
 	place(ringFrame, m)
 	place(openButton, m)
 	local arrowSize = math.floor(math.clamp(m.W * 0.13, 14, 28))
 	arrow.Position = UDim2.fromOffset(m.X + m.W / 2, m.Y + m.H / 2)
 	arrow.Size = UDim2.fromOffset(arrowSize, arrowSize)
 	local tag = math.floor(math.clamp(m.W * 0.12, 14, 24))
-	northTag.Position = UDim2.fromOffset(m.X + m.W / 2, m.Y + 2)
+	northTag.Position = UDim2.fromOffset(m.X + m.W / 2, m.Y + tag / 2 + 3) -- çerçevenin içinde
 	northTag.Size = UDim2.fromOffset(tag, tag)
 	local g = rects.Guidance
 	place(guide, g)
