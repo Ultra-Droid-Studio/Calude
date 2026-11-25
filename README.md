@@ -10,7 +10,8 @@
 | `place/SOLARA_Phase4_Navigation.rbxlx` | + Phase 4 (minimap, full map, GPS navigation). |
 | `place/SOLARA_Fix1_MenuFade.rbxlx` | + bug-fix roadmap step 1 (menu texts disappearing after screen changes). |
 | `place/SOLARA_Fix2_MenuCity.rbxlx` | + bug-fix roadmap step 2 (far city missing behind the main menu). |
-| `place/SOLARA_Fix3_WheelWobble.rbxlx` | **Current build:** + bug-fix roadmap step 3 (wheels wobbling by themselves, cars and motorcycles). Open this in Roblox Studio. |
+| `place/SOLARA_Fix3_WheelWobble.rbxlx` | + bug-fix roadmap step 3 (wheels wobbling by themselves, cars and motorcycles). |
+| `place/SOLARA_Fix4_BlackLayer.rbxlx` | **Current build:** + bug-fix roadmap step 4 (dark layer covering the screen in game). Open this in Roblox Studio. |
 | `tools/build_place.py` | Writes `src/` into a place file. Existing scripts get their Source replaced, missing scripts/folders are inserted, nothing is deleted, and the output is verified. |
 | `tools/place_patches.json` | Explicit property changes applied by the build (for example `Players.CharacterAutoLoads`). |
 | `docs/` | Phase 0 audit, Phase 1 notes, Phase 2 car physics report + test course procedure, Phase 3 driving UI, Phase 4 navigation. |
@@ -21,5 +22,5 @@
 Rebuild the place after editing `src/`:
 
 ```
-python3 tools/build_place.py place/SOLARA_Phase3.rbxlx src place/SOLARA_Fix3_WheelWobble.rbxlx --patches tools/place_patches.json
+python3 tools/build_place.py place/SOLARA_Phase3.rbxlx src place/SOLARA_Fix4_BlackLayer.rbxlx --patches tools/place_patches.json
 ```

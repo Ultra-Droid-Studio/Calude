@@ -35,6 +35,7 @@ local REFERENCE_SIZE = 200 -- yukarıdaki ölçekler bu piksel çaplı harita i�
 local gui: ScreenGui
 local root: Frame
 local clip: CanvasGroup
+local clipFrame: Frame -- CanvasGroup'u saran dikdörtgen kırpıcı (güvenlik katmanı)
 local canvas
 local arrow: Frame
 local northTag: TextLabel
@@ -98,7 +99,15 @@ local function build()
 	root = new("Frame", { Name = "Root", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Parent = gui })
 
 	-- Harita: yuvarlak kırpma için tek küçük CanvasGroup
-	clip = new("CanvasGroup", { Name = "Minimap", BackgroundColor3 = C.Background, BackgroundTransparency = 0, Parent = root })
+	-- Hata düzeltme 4: harita tuvali 10240×10240'lık bir çerçevedir ve ekrana taşmasını SADECE CanvasGroup
+	-- engelliyordu. CanvasGroup düşük bellekte/desteklemeyen cihazda düzgün kırpamazsa koyu tuval bütün ekranı
+	-- kaplıyordu (oyun içi siyah katman). Artık dışta ClipsDescendants'lı sıradan bir Frame de kırpar;
+	-- en kötü durumda taşma mini haritanın kare alanında kalır. Arka plan rengi tuvalden buraya taşındı.
+	clipFrame = new("Frame", { Name = "MinimapClip", BackgroundTransparency = 1, ClipsDescendants = true, Parent = root })
+	clip = new("CanvasGroup", {
+		Name = "Minimap", BackgroundColor3 = MapCanvas.LandColor, BackgroundTransparency = 0,
+		Size = UDim2.fromScale(1, 1), Parent = clipFrame,
+	})
 	new("UICorner", { CornerRadius = UDim.new(0.5, 0), Parent = clip })
 	canvas = MapCanvas.new(clip, { Detail = "Mini" })
 	local ring = new("Frame", { Name = "Ring", BackgroundTransparency = 1, Parent = root })
@@ -164,7 +173,7 @@ local function layout()
 		rects = DrivingLayout.Desktop(area.X, area.Y)
 	end
 	local m = rects.Minimap
-	place(clip, m)
+	place(clipFrame, m)
 	place(ringFrame, m)
 	place(openButton, m)
 	local arrowSize = math.floor(math.clamp(m.W * 0.13, 14, 28))

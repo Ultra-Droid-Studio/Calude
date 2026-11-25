@@ -388,12 +388,19 @@ local function enterWorld(token: number)
 	if fade > 0 then
 		task.wait(fade)
 	end
-	hideMenu(0)
-	lockGameplay(false)
-	releaseMenuCamera()
-	screens.Main:SetBusy(false)
-	setState("Playing")
-	refreshPauseButton()
+	-- Perde siyahken bir adım hata verirse perde açılmadan kalıyor ve ekran kapkara kalıyordu.
+	-- Hata yine de günlüğe yazılır ama perde HER durumda kalkar (Hata düzeltme 4).
+	local ok, err = pcall(function()
+		hideMenu(0)
+		lockGameplay(false)
+		releaseMenuCamera()
+		screens.Main:SetBusy(false)
+		setState("Playing")
+		refreshPauseButton()
+	end)
+	if not ok then
+		Log.Error("Oyuna geçişte hata (perde yine de kaldırılıyor):", err)
+	end
 	task.wait(0.1) -- kamera yeni konumda bir kare otursun
 	shell:SetVeil(false, duration(0.5))
 	Log.Info("Oyuna girildi")

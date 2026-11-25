@@ -37,6 +37,8 @@ local COLORS = {
 	RouteOffroad = rgb(160, 230, 240),
 }
 
+MapCanvas.LandColor = COLORS.Land -- mini haritanın kabı bu renkle boyanır
+
 -- POI türü → kategori (simge rengi + kısa harf Strings'ten)
 local POI_CATEGORY = {
 	supermarket = "Shop", grocery = "Shop", convenience = "Shop", general = "Shop", mall = "Shop",
@@ -90,7 +92,9 @@ function MapCanvas.new(parent: GuiObject, opts)
 	local root = frame(parent, {
 		Name = "MapRoot",
 		BackgroundColor3 = COLORS.Land,
-		BackgroundTransparency = if self.Detail == "Mini" then 0.05 else 0,
+		-- Mini haritada tuval saydam: zemin rengini kırpan kap verir. Böylece kırpma bir şekilde bozulsa bile
+		-- 10240×10240'lık koyu bir kare ekranı kaplamaz (Hata düzeltme 4). Tam haritada opak kalır.
+		BackgroundTransparency = if self.Detail == "Mini" then 1 else 0,
 		Size = UDim2.fromOffset(half * 2, half * 2),
 		ZIndex = 1,
 	})
