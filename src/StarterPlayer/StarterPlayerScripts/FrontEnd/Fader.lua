@@ -87,6 +87,13 @@ function Fader.Fade(root: GuiObject, show: boolean, duration: number, slide: num
 			return
 		end
 		states[root] = nil
+		-- Önce bu geçişin tween'lerini durdur: task.delay ile tween'in son karesinin sırası garanti değildir.
+		-- Durdurulmazsa geç gelen son kare, aşağıda geri yazılan taban değerlerin üzerine "saydam" yazar
+		-- ve gizlenen ekranın yazıları bir sonraki açılışta kalıcı olarak görünmez kalır.
+		for _, tween in state.Tweens do
+			tween:Cancel()
+		end
+		table.clear(state.Tweens)
 		setAll(base)
 		root.Position = basePosition
 		root.Visible = show
