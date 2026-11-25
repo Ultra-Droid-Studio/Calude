@@ -9,8 +9,8 @@
 --   * Players.CharacterAutoLoads = false. Oyuncu ana menüdeyken karakteri YOKTUR.
 --   * İstemci "OYNA" deyince PlayerRemotes.RequestSpawn gelir → sunucu doğrular, dünyanın zemini
 --     hazır olana kadar bekler ve TEK karakter yükler (kilit + "zaten canlı mı" kontrolü).
---   * Menüdeyken akış odağı (ReplicationFocus) menü kamerasının baktığı bölgeye çevrilir;
---     doğarken karaktere geri verilir.
+--   * Menüdeyken akış odağı (ReplicationFocus) menü kamerasının baktığı bölgeye çevrilir ve uzak şehir
+--     için ek odaklar (AddReplicationFocus) eklenir; doğarken hepsi kalkar, akış karaktere geri verilir.
 --   * Ölünce (veya karakter kaybolursa) RespawnDelay sonra sunucu yeniden doğurur.
 --   * Görünümü değiştiren hiçbir ApplyDescription çağrısı yapılmaz.
 --   * R6 ve R15 ikisi de desteklenir; rig tipi ve göz yüksekliği attribute olarak yazılır,
@@ -48,6 +48,44 @@ local spawnStates: { [Player]: SpawnState } = {}
 local spawnLimiter = RateLimiter.new(3, 0.5)
 local spawnStatusRemote: RemoteEvent? = nil
 local menuFocus: BasePart? = nil
+local menuExtraFoci: { BasePart } = {} -- uzak şehir için ek odaklar (sadece menüde)
+local extraFociPlayers: { [Player]: { BasePart } } = {} -- oyuncuya eklenmiş ek odaklar
+local extraFociWarned = false
+
+-- Menüdeki oyuncunun akış odakları: ana odak + ek odaklar. Ek odak API'si (AddReplicationFocus)
+-- bu sunucuda yoksa veya hata verirse sadece ana odakla devam edilir (eski davranış).
+local function setMenuStreaming(player: Player, inMenu: boolean)
+	if inMenu then
+		if menuFocus then
+			player.ReplicationFocus = menuFocus
+		end
+		if extraFociPlayers[player] then
+			return
+		end
+		local added = {}
+		for _, part in menuExtraFoci do
+			local ok, err = pcall(function()
+				(player :: any):AddReplicationFocus(part)
+			end)
+			if ok then
+				table.insert(added, part)
+			elseif not extraFociWarned then
+				extraFociWarned = true
+				Log.Warn("Ek akış odağı eklenemedi, menü tek odakla devam ediyor:", err)
+			end
+		end
+		extraFociPlayers[player] = added
+	else
+		player.ReplicationFocus = nil -- akış tekrar karakteri takip eder
+		local added = extraFociPlayers[player]
+		extraFociPlayers[player] = nil
+		for _, part in added or {} do
+			pcall(function()
+				(player :: any):RemoveReplicationFocus(part)
+			end)
+		end
+	end
+end
 
 local function checkAvatarPolicy()
 	if StarterPlayer:FindFirstChild("StarterCharacter") then
@@ -221,12 +259,13 @@ local function onPlayerAdded(player: Player)
 		task.spawn(onCharacterAdded, player, player.Character)
 	elseif menuFocus then
 		-- Menüdeyken içerik menü kamerasının çevresinde aksın
-		player.ReplicationFocus = menuFocus
+		setMenuStreaming(player, true)
 	end
 end
 
 local function onPlayerRemoving(player: Player)
 	spawnStates[player] = nil
+	extraFociPlayers[player] = nil
 	spawnLimiter:Forget(player)
 	local maid = playerMaids[player]
 	if maid then
@@ -277,7 +316,7 @@ end
 local function markInGame(player: Player, state: SpawnState)
 	state.InGame = true
 	player:SetAttribute(Constants.Attributes.InGame, true)
-	player.ReplicationFocus = nil -- akış tekrar karakteri takip eder
+	setMenuStreaming(player, false) -- akış tekrar karakteri takip eder, menü ek odakları kalkar
 end
 
 -- Oyuncuyu dünyaya sokar. Karakter zaten canlıysa yenisini YARATMAZ (sadece etkinleştirir).
@@ -306,13 +345,14 @@ function CharacterService:SpawnPlayer(player: Player, reason: string?): boolean
 		return true
 	end
 	-- Akış odağını doğmadan ÖNCE karaktere bırak (yeni karakterin çevresi hemen yüklensin)
-	player.ReplicationFocus = nil
+	setMenuStreaming(player, false)
 	local ok, err = pcall(function()
 		player:LoadCharacter()
 	end)
 	state.Spawning = false
 	if not ok then
 		Log.Error("LoadCharacter başarısız:", player.Name, err)
+		setMenuStreaming(player, true) -- oyuncu menüde kalıyor; menü şehri akmaya devam etsin
 		return false
 	end
 	markInGame(player, state)
@@ -374,6 +414,13 @@ function CharacterService:Start()
 	focus.Position = FrontEndConfig.StreamFocus
 	focus.Parent = workspace
 	menuFocus = focus
+	for index, position in FrontEndConfig.MenuExtraStreamFoci or {} do
+		local extra = focus:Clone()
+		extra.Name = "SolaraMenuFocus" .. (index + 1)
+		extra.Position = position
+		extra.Parent = workspace
+		table.insert(menuExtraFoci, extra)
+	end
 
 	spawnStatusRemote = RemoteRegistry.Get("PlayerRemotes", "SpawnStatus") :: RemoteEvent
 	local requestSpawn = RemoteRegistry.Get("PlayerRemotes", "RequestSpawn") :: RemoteEvent

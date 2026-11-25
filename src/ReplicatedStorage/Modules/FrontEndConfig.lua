@@ -32,6 +32,14 @@ FrontEndConfig.PauseShot = {
 -- Hem menü çekimine (≈500 stud) hem doğma meydanına (≈400 stud) yakın seçildi.
 FrontEndConfig.StreamFocus = Vector3.new(-270, 20, -270)
 FrontEndConfig.StreamRequestTimeout = 12 -- sn (istemci RequestStreamAroundAsync)
+-- Menü arka planındaki uzak şehir için EK akış odakları (sunucu: Player:AddReplicationFocus).
+-- Tek odak (1024 stud) menü kamerasının gördüğü binaların ~%30'unu yüklüyordu (uzak kısım hiç gelmiyordu).
+-- Bu iki nokta ile ~%76'sı (ekranda kapladıkları alanın ~%97'si) yüklenir. Sadece menüdeyken etkindir;
+-- oyuncu doğarken kaldırılır. Hesap: harita verisi + MenuShot görüş alanı (Hata düzeltme 2 dokümanı).
+FrontEndConfig.MenuExtraStreamFoci = {
+	Vector3.new(1900, 20, 0),
+	Vector3.new(400, 20, 1200),
+}
 
 -- Şehir menü arka planında "hazır" sayılmadan önce yedek arka plan gösterilir.
 FrontEndConfig.CityProbeInterval = 1 -- sn
