@@ -16,6 +16,9 @@ RemoteRegistry.Definitions = {
 		ClientReady = { Class = "RemoteEvent", Direction = "C2S" }, -- istemci yüklendi
 		SessionInfo = { Class = "RemoteEvent", Direction = "S2C" }, -- mod, sürüm, sunucu saati
 		Notify = { Class = "RemoteEvent", Direction = "S2C" }, -- kısa bildirim metni
+		-- Ana menü (Aşama 1 / ön yüz): karakter artık otomatik doğmaz; "OYNA" ile sunucudan istenir.
+		RequestSpawn = { Class = "RemoteEvent", Direction = "C2S" }, -- doğ / etkinleş (sunucu doğrular, tek karakter)
+		SpawnStatus = { Class = "RemoteEvent", Direction = "S2C" }, -- (durum, ayrıntı): "Queued" | "Spawned" | "Rejected"
 	},
 	-- Aşağıdaki gruplar sonraki aşamalarda doldurulacak; klasörleri şimdiden açılıyor
 	VehicleRemotes = {

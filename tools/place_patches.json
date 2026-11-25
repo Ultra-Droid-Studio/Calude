@@ -1,0 +1,9 @@
+[
+  {
+    "path": "Players",
+    "property": "CharacterAutoLoads",
+    "type": "bool",
+    "value": "false",
+    "why": "Phase 1 main menu: the server spawns the character when the player presses PLAY (CharacterService.SpawnPlayer)."
+  }
+]

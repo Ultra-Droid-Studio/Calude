@@ -20,6 +20,14 @@ AudioConfig.Vehicle = {
 	RollOffMax = 140, -- uzaktaki araçlar gereksiz yüksek ses çıkarmasın
 }
 
+-- Menü/arayüz sesleri (Aşama 1). Boşsa menü sessiz çalışır.
+AudioConfig.Interface = {
+	Move = "", -- odak değişimi (kısa "tık")
+	Select = "", -- onay
+	Back = "", -- geri
+	Volume = 0.5,
+}
+
 function AudioConfig.Resolve(id: string?): string?
 	if id == nil or id == "" then
 		return nil

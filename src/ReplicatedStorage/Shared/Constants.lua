@@ -7,6 +7,7 @@ Constants.Attributes = {
 	-- Player
 	GameMode = "GameMode",
 	SessionReady = "SessionReady",
+	InGame = "InGame", -- oyuncu ana menüden çıkıp dünyaya girdi mi (sunucu yazar)
 	-- Character
 	RigType = "RigType", -- "R6" | "R15"
 	EyeHeight = "EyeHeight", -- HumanoidRootPart -> göz yüksekliği (avatar oranına göre)

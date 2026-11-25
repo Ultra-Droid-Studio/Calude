@@ -59,7 +59,10 @@ end
 local function getButtonSize(viewport: Vector2): number
 	local m = UIConfig.Mobile
 	local minAxis = math.min(viewport.X, viewport.Y)
-	return math.clamp(math.floor(minAxis * m.ButtonSizeScale), m.ButtonMinPx, m.ButtonMaxPx)
+	-- Oyuncu tercihi (Ayarlar → Kontroller → Mobil buton boyutu): 0.85 / 1 / 1.2
+	local userScale = controllers and controllers.SettingsController and controllers.SettingsController:Get("MobileButtonScale") or 1
+	local base = math.clamp(math.floor(minAxis * m.ButtonSizeScale), m.ButtonMinPx, m.ButtonMaxPx)
+	return math.floor(base * userScale)
 end
 
 local function makeButton(name: string, text: string): TextButton
@@ -286,6 +289,11 @@ function MobileControlsController:Start()
 	input.ActionEnded:Connect(function(action)
 		if action == "Sprint" and buttons.Sprint then
 			setActiveLook(buttons.Sprint, false)
+		end
+	end)
+	controllers.SettingsController.Changed:Connect(function(key)
+		if key == "MobileButtonScale" then
+			layout()
 		end
 	end)
 	controllers.CameraController.ModeChanged:Connect(function(mode)

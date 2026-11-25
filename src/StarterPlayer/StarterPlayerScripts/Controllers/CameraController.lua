@@ -431,12 +431,16 @@ end
 local function stepScripted(dt: number, entry)
 	UserInputService.MouseBehavior = Enum.MouseBehavior.Default
 	applyCharacterTransparency(0, false)
-	local ok, cframe, fov = pcall(entry.Supplier, dt)
+	-- Supplier: fn(dt) -> CFrame, FOV?, Focus? (Focus: render ayrıntı/ışık merkezi; menü çekimleri için)
+	local ok, cframe, fov, focus = pcall(entry.Supplier, dt)
 	if ok and typeof(cframe) == "CFrame" then
 		camera.CFrame = cframe
 		if type(fov) == "number" then
 			currentFov = fov
 			camera.FieldOfView = fov
+		end
+		if typeof(focus) == "CFrame" then
+			camera.Focus = focus
 		end
 	else
 		Log.Warn("Senaryolu kamera fonksiyonu hata verdi, istek kaldırılıyor:", cframe)
@@ -554,6 +558,9 @@ function CameraController:SnapBehindCharacter()
 		yaw, pitch = targetYaw, targetPitch
 		snapNextFrame = true
 	end
+	-- Ani yerleşmede birikmiş bakış girişini at (ör. menüdeyken yapılan dokunmatik kaydırmalar)
+	pendingTouchDelta = Vector2.zero
+	gamepadLook = Vector2.zero
 end
 
 -- Anahtar karelerle sinematik geçiş. Bitince (veya hata/zaman aşımında) kamera MUTLAKA geri döner.

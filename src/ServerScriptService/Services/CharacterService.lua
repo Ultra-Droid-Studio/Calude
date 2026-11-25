@@ -2,8 +2,16 @@
 --
 -- Avatar kuralları (kullanıcının zorunlu şartı):
 --   * Özel karakter modeli YOK. StarterPlayer.StarterCharacter bulunursa uyarılır.
---   * Players.CharacterAutoLoads = true → Roblox, hesabın HumanoidDescription'ını yükler
+--   * Karakter player:LoadCharacter() ile yüklenir → Roblox, hesabın HumanoidDescription'ını yükler
 --     (kıyafet, aksesuar, vücut oranları, animasyon paketi korunur).
+--
+-- Doğma akışı (Aşama 1 — ana menü):
+--   * Players.CharacterAutoLoads = false. Oyuncu ana menüdeyken karakteri YOKTUR.
+--   * İstemci "OYNA" deyince PlayerRemotes.RequestSpawn gelir → sunucu doğrular, dünyanın zemini
+--     hazır olana kadar bekler ve TEK karakter yükler (kilit + "zaten canlı mı" kontrolü).
+--   * Menüdeyken akış odağı (ReplicationFocus) menü kamerasının baktığı bölgeye çevrilir;
+--     doğarken karaktere geri verilir.
+--   * Ölünce (veya karakter kaybolursa) RespawnDelay sonra sunucu yeniden doğurur.
 --   * Görünümü değiştiren hiçbir ApplyDescription çağrısı yapılmaz.
 --   * R6 ve R15 ikisi de desteklenir; rig tipi ve göz yüksekliği attribute olarak yazılır,
 --     böylece kamera/araç/animasyon sistemleri farklı boylardaki avatarlara uyum sağlar.
@@ -17,6 +25,9 @@ local Config = require(Shared.Config)
 local Constants = require(Shared.Constants)
 local Signal = require(Shared.Utilities.Signal)
 local Maid = require(Shared.Utilities.Maid)
+local RateLimiter = require(Shared.Utilities.RateLimiter)
+local RemoteRegistry = require(Shared.RemoteRegistry)
+local FrontEndConfig = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("FrontEndConfig"))
 local Log = require(Shared.Utilities.Log).new("CharacterService")
 
 local CharacterService = {
@@ -31,6 +42,13 @@ local random = Random.new()
 
 local APPEARANCE_TIMEOUT = 8
 
+-- Doğma durumu (oyuncu başına)
+type SpawnState = { InGame: boolean, Spawning: boolean }
+local spawnStates: { [Player]: SpawnState } = {}
+local spawnLimiter = RateLimiter.new(3, 0.5)
+local spawnStatusRemote: RemoteEvent? = nil
+local menuFocus: BasePart? = nil
+
 local function checkAvatarPolicy()
 	if StarterPlayer:FindFirstChild("StarterCharacter") then
 		Log.Warn("StarterPlayer.StarterCharacter bulundu! Bu, oyuncu avatarlarını EZER. Kaldırılmalı.")
@@ -41,9 +59,11 @@ local function checkAvatarPolicy()
 			StarterPlayer.LoadCharacterAppearance = true
 		end)
 	end
-	if not Players.CharacterAutoLoads then
-		Log.Warn("Players.CharacterAutoLoads kapalıydı; açılıyor.")
-		Players.CharacterAutoLoads = true
+	-- Ana menü: karakteri sunucu, oyuncu "OYNA" dediğinde yükler.
+	-- (Place dosyasında da false olmalı; aksi halde ilk oyuncu bu satırdan önce otomatik doğabilir.)
+	if Players.CharacterAutoLoads then
+		Log.Warn("Players.CharacterAutoLoads açıktı; ana menü akışı için kapatılıyor.")
+		Players.CharacterAutoLoads = false
 	end
 	Players.RespawnTime = Config.Spawn.RespawnDelay
 end
@@ -170,6 +190,7 @@ local function onCharacterAdded(player: Player, character: Model)
 
 	charMaid:Give(humanoid.Died:Connect(function()
 		Log.Info("Öldü:", player.Name, "(", Config.Spawn.RespawnDelay, "sn sonra yeniden doğar )")
+		CharacterService:_scheduleRespawnCheck(player)
 	end))
 
 	local info = {
@@ -187,19 +208,151 @@ local function onPlayerAdded(player: Player)
 	end
 	local maid = Maid.new()
 	playerMaids[player] = maid
+	spawnStates[player] = { InGame = false, Spawning = false }
+	player:SetAttribute(Constants.Attributes.InGame, false)
 	maid:Give(player.CharacterAdded:Connect(function(character)
 		onCharacterAdded(player, character)
 	end))
+	-- Karakter ölmeden kaybolursa (ör. başka bir sistem sildi) oyundaki oyuncu yine geri gelir
+	maid:Give(player.CharacterRemoving:Connect(function()
+		CharacterService:_scheduleRespawnCheck(player)
+	end))
 	if player.Character then
 		task.spawn(onCharacterAdded, player, player.Character)
+	elseif menuFocus then
+		-- Menüdeyken içerik menü kamerasının çevresinde aksın
+		player.ReplicationFocus = menuFocus
 	end
 end
 
 local function onPlayerRemoving(player: Player)
+	spawnStates[player] = nil
+	spawnLimiter:Forget(player)
 	local maid = playerMaids[player]
 	if maid then
 		playerMaids[player] = nil
 		maid:Clean()
+	end
+end
+
+-- ===== Doğma (ana menü → dünya) =====
+local function isAlive(player: Player): boolean
+	local character = player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	return humanoid ~= nil and humanoid.Health > 0 and character.Parent ~= nil
+end
+
+local function worldReady(): boolean
+	local world = services.WorldService
+	return world ~= nil and world:IsReady()
+end
+
+local function groundReady(): boolean
+	if worldReady() then
+		return true
+	end
+	local folder = workspace:FindFirstChild("World")
+	local progress = folder and folder:GetAttribute("BuildProgress")
+	return type(progress) == "number" and progress >= FrontEndConfig.MinWorldProgress
+end
+
+-- Önce dünyanın tamamını, olmazsa en az zemini bekler. Sonsuza kadar beklemez.
+local function waitForWorld(player: Player)
+	local function waitUntil(check: () -> boolean, seconds: number)
+		local deadline = os.clock() + seconds
+		while not check() and os.clock() < deadline and player.Parent == Players do
+			task.wait(0.25)
+		end
+	end
+	if not worldReady() and spawnStatusRemote then
+		spawnStatusRemote:FireClient(player, "Queued", "World")
+	end
+	waitUntil(worldReady, FrontEndConfig.ServerWorldWait)
+	if not worldReady() then
+		waitUntil(groundReady, FrontEndConfig.ServerGroundWait)
+		Log.Warn("Dünya tam hazır olmadan doğuruluyor:", player.Name, "zemin hazır:", groundReady())
+	end
+end
+
+local function markInGame(player: Player, state: SpawnState)
+	state.InGame = true
+	player:SetAttribute(Constants.Attributes.InGame, true)
+	player.ReplicationFocus = nil -- akış tekrar karakteri takip eder
+end
+
+-- Oyuncuyu dünyaya sokar. Karakter zaten canlıysa yenisini YARATMAZ (sadece etkinleştirir).
+-- Aynı anda tek doğma işlemi yürür (Spawning kilidi). true → oyuncunun canlı karakteri var.
+function CharacterService:SpawnPlayer(player: Player, reason: string?): boolean
+	local state = spawnStates[player]
+	if not state or player.Parent ~= Players then
+		return false
+	end
+	if isAlive(player) then
+		markInGame(player, state)
+		return true
+	end
+	if state.Spawning then
+		return false -- zaten sürüyor; ikinci karakter yaratma
+	end
+	state.Spawning = true
+	waitForWorld(player)
+	if player.Parent ~= Players or spawnStates[player] ~= state then
+		state.Spawning = false
+		return false
+	end
+	if isAlive(player) then
+		state.Spawning = false
+		markInGame(player, state)
+		return true
+	end
+	-- Akış odağını doğmadan ÖNCE karaktere bırak (yeni karakterin çevresi hemen yüklensin)
+	player.ReplicationFocus = nil
+	local ok, err = pcall(function()
+		player:LoadCharacter()
+	end)
+	state.Spawning = false
+	if not ok then
+		Log.Error("LoadCharacter başarısız:", player.Name, err)
+		return false
+	end
+	markInGame(player, state)
+	Log.Info("Doğdu:", player.Name, "sebep:", reason or "?")
+	return true
+end
+
+function CharacterService:IsInGame(player: Player): boolean
+	local state = spawnStates[player]
+	return state ~= nil and state.InGame
+end
+
+-- Ölüm/kaybolma sonrası: gecikmeden sonra oyuncu hâlâ oyundaysa ve canlı karakteri yoksa yeniden doğur.
+-- Aynı karakter için birden çok çağrı güvenlidir (SpawnPlayer kilidi + canlılık kontrolü).
+function CharacterService:_scheduleRespawnCheck(player: Player)
+	task.delay(Config.Spawn.RespawnDelay, function()
+		local state = spawnStates[player]
+		if state and state.InGame and not state.Spawning and not isAlive(player) then
+			CharacterService:SpawnPlayer(player, "Respawn")
+		end
+	end)
+end
+
+local function onSpawnRequest(player: Player)
+	if not spawnLimiter:Check(player) then
+		return
+	end
+	local session = services.PlayerService and services.PlayerService:GetSession(player)
+	if not session or not spawnStates[player] then
+		if spawnStatusRemote then
+			spawnStatusRemote:FireClient(player, "Rejected", "NoSession")
+		end
+		return
+	end
+	if spawnStates[player].Spawning then
+		return -- istemci tekrar bastı; süren işlem sonucu bildirecek
+	end
+	local ok = CharacterService:SpawnPlayer(player, "Menu")
+	if spawnStatusRemote and player.Parent == Players then
+		spawnStatusRemote:FireClient(player, if ok then "Spawned" else "Rejected", if ok then nil else "Error")
 	end
 end
 
@@ -209,6 +362,25 @@ function CharacterService:Init(allServices)
 end
 
 function CharacterService:Start()
+	-- Menüdeki oyuncuların akış odağı (görünmez, çarpışmasız sabit parça)
+	local focus = Instance.new("Part")
+	focus.Name = "SolaraMenuFocus"
+	focus.Anchored = true
+	focus.CanCollide = false
+	focus.CanQuery = false
+	focus.CanTouch = false
+	focus.Transparency = 1
+	focus.Size = Vector3.new(1, 1, 1)
+	focus.Position = FrontEndConfig.StreamFocus
+	focus.Parent = workspace
+	menuFocus = focus
+
+	spawnStatusRemote = RemoteRegistry.Get("PlayerRemotes", "SpawnStatus") :: RemoteEvent
+	local requestSpawn = RemoteRegistry.Get("PlayerRemotes", "RequestSpawn") :: RemoteEvent
+	requestSpawn.OnServerEvent:Connect(function(player: Player)
+		task.spawn(onSpawnRequest, player)
+	end)
+
 	Players.PlayerAdded:Connect(onPlayerAdded)
 	Players.PlayerRemoving:Connect(onPlayerRemoving)
 	for _, player in Players:GetPlayers() do

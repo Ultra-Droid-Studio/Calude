@@ -30,6 +30,12 @@ InputConfig.Actions = {
 		Gamepad = {},
 		Hold = false,
 	},
+	-- Oyun içinde ana menüyü aç (Esc Roblox'a ait; gamepad'de Start da Roblox menüsüdür)
+	OpenMenu = {
+		Keys = { Enum.KeyCode.P },
+		Gamepad = { Enum.KeyCode.DPadLeft },
+		Hold = false,
+	},
 	-- ===== Araç bağlamı (sadece araçtayken bağlanır; yürürken WASD'yi engellemez) =====
 	VehGas = { Context = "Vehicle", Keys = { Enum.KeyCode.W, Enum.KeyCode.Up }, Gamepad = { Enum.KeyCode.ButtonR2 }, Hold = true },
 	VehBrake = { Context = "Vehicle", Keys = { Enum.KeyCode.S, Enum.KeyCode.Down }, Gamepad = { Enum.KeyCode.ButtonL2 }, Hold = true },
@@ -42,6 +48,17 @@ InputConfig.Actions = {
 	VehIndLeft = { Context = "Vehicle", Keys = { Enum.KeyCode.Q }, Gamepad = { Enum.KeyCode.DPadLeft }, Hold = false },
 	VehIndRight = { Context = "Vehicle", Keys = { Enum.KeyCode.E }, Gamepad = { Enum.KeyCode.DPadRight }, Hold = false },
 	VehFlip = { Context = "Vehicle", Keys = { Enum.KeyCode.R }, Gamepad = { Enum.KeyCode.ButtonB }, Hold = false },
+	-- ===== Menü bağlamı (ana menü açıkken bağlanır; OnFoot eylemleri o sırada çözülür) =====
+	-- Yön eylemleri basılı tutulunca FrontEnd tekrar eder (Hold = true).
+	MenuUp = { Context = "Menu", Keys = { Enum.KeyCode.Up, Enum.KeyCode.W }, Gamepad = { Enum.KeyCode.DPadUp }, Hold = true },
+	MenuDown = { Context = "Menu", Keys = { Enum.KeyCode.Down, Enum.KeyCode.S }, Gamepad = { Enum.KeyCode.DPadDown }, Hold = true },
+	MenuLeft = { Context = "Menu", Keys = { Enum.KeyCode.Left, Enum.KeyCode.A }, Gamepad = { Enum.KeyCode.DPadLeft }, Hold = true },
+	MenuRight = { Context = "Menu", Keys = { Enum.KeyCode.Right, Enum.KeyCode.D }, Gamepad = { Enum.KeyCode.DPadRight }, Hold = true },
+	MenuAccept = { Context = "Menu", Keys = { Enum.KeyCode.Return, Enum.KeyCode.KeypadEnter }, Gamepad = { Enum.KeyCode.ButtonA }, Hold = false },
+	MenuBack = { Context = "Menu", Keys = { Enum.KeyCode.Backspace }, Gamepad = { Enum.KeyCode.ButtonB }, Hold = false },
+	MenuTabPrev = { Context = "Menu", Keys = { Enum.KeyCode.Q }, Gamepad = { Enum.KeyCode.ButtonL1 }, Hold = false },
+	MenuTabNext = { Context = "Menu", Keys = { Enum.KeyCode.E }, Gamepad = { Enum.KeyCode.ButtonR1 }, Hold = false },
+	MenuClose = { Context = "Menu", Keys = { Enum.KeyCode.P }, Gamepad = {}, Hold = false },
 	-- İleride: Interact (E), Inventory (Tab), Map (M)...
 }
 

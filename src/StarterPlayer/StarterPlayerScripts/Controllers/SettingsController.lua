@@ -1,82 +1,164 @@
 -- SettingsController: oyuncu ayarları (istemci tarafı).
--- Aşama 1: oturum içinde tutulur. Aşama 11'de Settings UI + DataService ile kalıcı hale gelecek.
+--
+-- Aşama 1 (ana menü): ayarlar artık Shared/SettingsSchema'dan gelir (tip, aralık, varsayılan, kategori).
+-- Ayarlar ekranı şemayı okuyarak satırları kendisi üretir; doğrulama tek yerde.
+--
+-- Kalıcılık mimarisi (sonraki aşama için hazır):
+--   Ayarlar bir "depo" (store) üzerinden yüklenir/kaydedilir:
+--     store.Load() -> { Version, Values }?     (yield edebilir)
+--     store.Save({ Version, Values })          (yield edebilir; burada task.spawn içinde çağrılır)
+--   Bugünkü depo SessionStore'dur: değerler sadece bu oturum boyunca (yeniden doğmalar dahil) yaşar.
+--   Veri aşamasında sunucudaki DataService'e giden bir depo SetStore() ile takılır; başka kod değişmez.
+--
+-- Genel API (geriye uyumlu): Get, Set, ResetToDefaults, Changed sinyali.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Signal = require(Shared.Utilities.Signal)
-local Constants = require(Shared.Constants)
+local SettingsSchema = require(Shared.SettingsSchema)
 local Log = require(Shared.Utilities.Log).new("Settings")
 
 local SettingsController = {
 	Name = "SettingsController",
 	Priority = 1,
 	Changed = Signal.new(), -- (key, newValue, oldValue)
+	Loaded = Signal.new(), -- () depodan değerler yüklendi
 }
 
-local DEFAULTS = {
-	CameraMode = "ThirdPerson", -- ThirdPerson | ThirdPersonAlt | FirstPerson
-	CameraSensitivity = 1.0, -- 0.2 .. 3.0
-	InvertY = false,
-	FieldOfViewOffset = 0, -- -10 .. +15
-	ShoulderSide = 1, -- 1 = sağ omuz, -1 = sol omuz
-	CameraSmoothing = true,
-}
+local SAVE_DEBOUNCE = 1.5
 
--- Her ayar için doğrulayıcı: geçersiz değer reddedilir (UI hatası oyunu bozmasın)
-local VALIDATORS = {
-	CameraMode = function(v)
-		return table.find(Constants.PlayerSelectableCameraModes, v) ~= nil
-	end,
-	CameraSensitivity = function(v)
-		return type(v) == "number" and v >= 0.2 and v <= 3
-	end,
-	InvertY = function(v)
-		return type(v) == "boolean"
-	end,
-	FieldOfViewOffset = function(v)
-		return type(v) == "number" and v >= -10 and v <= 15
-	end,
-	ShoulderSide = function(v)
-		return v == 1 or v == -1
-	end,
-	CameraSmoothing = function(v)
-		return type(v) == "boolean"
-	end,
-}
+local values = SettingsSchema.Defaults()
+local dirty = false
+local saveScheduled = false
 
-local values = table.clone(DEFAULTS)
+-- ===== Depolar =====
+local SessionStore = {}
+SessionStore.__index = SessionStore
 
+function SessionStore.new()
+	return setmetatable({ _data = nil }, SessionStore)
+end
+
+function SessionStore:Load()
+	return self._data
+end
+
+function SessionStore:Save(payload)
+	self._data = table.clone(payload)
+end
+
+local store = SessionStore.new()
+
+-- ===== İç yardımcılar =====
+local function scheduleSave()
+	dirty = true
+	if saveScheduled then
+		return
+	end
+	saveScheduled = true
+	task.delay(SAVE_DEBOUNCE, function()
+		saveScheduled = false
+		if not dirty then
+			return
+		end
+		dirty = false
+		local payload = SettingsController:Export()
+		local ok, err = pcall(function()
+			store:Save(payload)
+		end)
+		if not ok then
+			Log.Warn("Ayarlar kaydedilemedi:", err)
+		end
+	end)
+end
+
+local function apply(key: string, value: any, save: boolean): boolean
+	local normalized = SettingsSchema.Normalize(key, value)
+	if normalized == nil then
+		if SettingsSchema.Get(key) then
+			Log.Warn("Geçersiz ayar değeri:", key, value)
+		else
+			Log.Warn("Bilinmeyen ayar:", key)
+		end
+		return false
+	end
+	local old = values[key]
+	if old == normalized then
+		return true
+	end
+	values[key] = normalized
+	SettingsController.Changed:Fire(key, normalized, old)
+	if save then
+		scheduleSave()
+	end
+	return true
+end
+
+-- ===== Genel API =====
 function SettingsController:Get(key: string): any
 	return values[key]
 end
 
 function SettingsController:Set(key: string, value: any): boolean
-	local validator = VALIDATORS[key]
-	if not validator then
-		Log.Warn("Bilinmeyen ayar:", key)
-		return false
-	end
-	if not validator(value) then
-		Log.Warn("Geçersiz ayar değeri:", key, value)
-		return false
-	end
-	local old = values[key]
-	if old == value then
-		return true
-	end
-	values[key] = value
-	SettingsController.Changed:Fire(key, value, old)
-	return true
+	return apply(key, value, true)
 end
 
-function SettingsController:ResetToDefaults()
-	for key, value in DEFAULTS do
-		self:Set(key, value)
+-- category verilirse sadece o sekmenin ayarları sıfırlanır
+function SettingsController:ResetToDefaults(category: string?)
+	for _, def in SettingsSchema.Definitions do
+		if category == nil or def.Category == category then
+			apply(def.Key, def.Default, true)
+		end
 	end
+end
+
+function SettingsController:GetSchema()
+	return SettingsSchema
+end
+
+function SettingsController:IsDefault(key: string): boolean
+	local def = SettingsSchema.Get(key)
+	return def ~= nil and values[key] == def.Default
+end
+
+function SettingsController:Export()
+	return { Version = SettingsSchema.Version, Values = table.clone(values) }
+end
+
+-- Dışarıdan gelen veriyi (kayıt) şemaya göre temizleyip uygular. Kaydetmez (zaten kayıttan geldi).
+function SettingsController:Import(payload: any)
+	local data = if type(payload) == "table" then payload.Values else nil
+	for key, value in SettingsSchema.Sanitize(data) do
+		apply(key, value, false)
+	end
+end
+
+-- Veri aşaması burayı kullanacak: SettingsController:SetStore(RemoteSettingsStore.new(...))
+function SettingsController:SetStore(newStore)
+	assert(type(newStore) == "table" and newStore.Load and newStore.Save, "Geçersiz ayar deposu")
+	store = newStore
+	task.spawn(function()
+		local ok, payload = pcall(function()
+			return store:Load()
+		end)
+		if ok and payload then
+			SettingsController:Import(payload)
+		elseif not ok then
+			Log.Warn("Ayarlar yüklenemedi, varsayılanlar kullanılıyor:", payload)
+		end
+		SettingsController.Loaded:Fire()
+	end)
 end
 
 function SettingsController:Init() end
-function SettingsController:Start() end
+
+function SettingsController:Start()
+	local payload = store:Load()
+	if payload then
+		self:Import(payload)
+	end
+	SettingsController.Loaded:Fire()
+end
 
 return SettingsController

@@ -85,7 +85,8 @@ local function bindAction(actionName: string, def)
 	if #inputs == 0 then
 		return
 	end
-	local priority = if def.Context == "Vehicle" then Enum.ContextActionPriority.High.Value else Enum.ContextActionPriority.Default.Value
+	-- Bağlam eylemleri (Vehicle, Menu) yürürken varsayılan kontrollerin önüne geçmeli
+	local priority = if def.Context and def.Context ~= "OnFoot" then Enum.ContextActionPriority.High.Value else Enum.ContextActionPriority.Default.Value
 	ContextActionService:BindActionAtPriority("OW_" .. actionName, function(_, state)
 		if state == Enum.UserInputState.Begin then
 			InputController:Trigger(actionName, true)
