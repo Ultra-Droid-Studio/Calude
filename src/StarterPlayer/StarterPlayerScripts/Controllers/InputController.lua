@@ -22,6 +22,8 @@ local InputController = {
 }
 
 local activeActions: { [string]: boolean } = {}
+-- Analog kanallar (ör. mobil direksiyon pedi "VehSteer": -1..1). Sahibi değeri yazar, okuyan çeker.
+local analogValues: { [string]: number } = {}
 local deviceType = Constants.DeviceTypes.KeyboardMouse
 
 local function classify(inputType: Enum.UserInputType): string?
@@ -55,6 +57,18 @@ end
 
 function InputController:IsActionActive(actionName: string): boolean
 	return activeActions[actionName] == true
+end
+
+function InputController:SetAnalog(name: string, value: number?)
+	if value == nil or value == 0 or value ~= value then
+		analogValues[name] = nil
+	else
+		analogValues[name] = math.clamp(value, -1, 1)
+	end
+end
+
+function InputController:GetAnalog(name: string): number
+	return analogValues[name] or 0
 end
 
 -- Mobil butonlar ve testler bu fonksiyonla eylem tetikler
@@ -121,6 +135,9 @@ function InputController:SetContext(contextName: string, enabled: boolean)
 			end
 		end
 	end
+	if not enabled and contextName == "Vehicle" then
+		analogValues.VehSteer = nil -- araçtan çıkınca direksiyon değeri takılı kalmasın
+	end
 end
 
 function InputController:IsContextActive(contextName: string): boolean
@@ -154,6 +171,7 @@ function InputController:Start()
 		for actionName in table.clone(activeActions) do
 			InputController:Trigger(actionName, false)
 		end
+		table.clear(analogValues)
 	end)
 end
 

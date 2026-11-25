@@ -18,6 +18,17 @@ export type CameraProfile = {
 	CollisionRadius: number,
 	HideCharacter: boolean,
 	SprintFovBoost: number,
+	-- Sürüş kamerası (Aşama 3; sadece araç profillerinde)
+	VerticalSharpness: number?,
+	RoofClearance: number?,
+	LengthFactor: number?,
+	DistancePad: number?,
+	AutoFollowSharpness: number?,
+	AutoPitch: number?,
+	PitchFollow: number?,
+	RollFollow: number?,
+	SpeedFovBoost: number?,
+	SpeedDistanceBoost: number?,
 }
 
 export type SessionInfo = {

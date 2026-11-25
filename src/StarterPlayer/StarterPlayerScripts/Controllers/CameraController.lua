@@ -52,6 +52,19 @@ local pivot: Vector3? = nil
 local snapNextFrame = true
 local currentFov = 70
 local followSubject: BasePart? = nil -- araç modunda takip edilecek parça (Aşama 3)
+-- Araç çerçeveleme (Aşama 3 sürüş kamerası): aracın boyuna göre mesafe/yükseklik. nil → profil değerleri
+type Framing = { Length: number, RoofHeight: number, MaxSpeed: number }
+local followFraming: Framing? = nil
+local vehicleZoom: { [string]: number } = {} -- araç modlarında oyuncu yakınlaştırması (çerçeveye oran)
+local vehicleRoll = 0
+
+-- Geçiş: kontrol el değiştirirken (araca binme/inme, mod değişimi, menüden dönüş) kamera eski karesinden
+-- yeni hedefine yumuşakça kayar. Kamerayı yine sadece bu modül yazar.
+local TRANSITION_TIME = 0.45
+local transitionFrom: CFrame? = nil
+local transitionFromFov = 70
+local transitionTime = 0
+local transitionDuration = TRANSITION_TIME
 local autoFollowHeading = false -- araçta: oyuncu kamerayı çevirmezse aracın arkasına döner
 local lastLookInput = 0
 local AUTO_FOLLOW_DELAY = 1.2
@@ -128,6 +141,40 @@ local function syncAnglesFromCamera()
 	yaw, pitch = targetYaw, targetPitch
 end
 
+local function beginTransition(seconds: number?)
+	local settings = controllers and controllers.SettingsController
+	local reduce = settings and settings:Get("ReduceMotion") == true
+	local d = (seconds or TRANSITION_TIME) * (if reduce then 0.35 else 1)
+	if d <= 0.01 then
+		transitionFrom = nil
+		return
+	end
+	transitionFrom = camera.CFrame
+	transitionFromFov = camera.FieldOfView
+	transitionTime = 0
+	transitionDuration = d
+end
+
+local function cancelTransition()
+	transitionFrom = nil
+end
+
+-- Aktif profilin araç çerçevelemesiyle düzeltilmiş değerleri: omuz yüksekliği, mesafe, min, max
+local function framedValues(profile): (number, number, number, number)
+	local shoulderY = profile.ShoulderOffset.Y
+	local distance, minD, maxD = profile.Distance, profile.MinDistance, profile.MaxDistance
+	local f = followFraming
+	if followSubject and f and profile.Distance > 0 then
+		-- Kamera tavanın üstünde dursun (uzun/yüksek araçlar görüşü kapatmasın)
+		shoulderY = math.max(shoulderY, f.RoofHeight + (profile.RoofClearance or 1))
+		-- Mesafe aracın boyuyla ölçeklenir; en yakın konum aracın arka ucunun dışında kalır
+		distance = math.max(distance, f.Length * (profile.LengthFactor or 0.7) + (profile.DistancePad or 2))
+		minD = math.max(minD, f.Length / 2 + 3)
+		maxD = math.max(maxD, distance + 8)
+	end
+	return shoulderY, distance, minD, maxD
+end
+
 -- ===== Karakter görünürlüğü (birinci şahıs / çok yakın kamera) =====
 local function collectCharacterParts(character: Model?)
 	table.clear(characterParts)
@@ -177,6 +224,9 @@ end
 
 local function onModeChanged(newMode: string, oldMode: string?)
 	local wasFollow = oldMode == nil or isFollowMode(oldMode)
+	if oldMode ~= nil and isFollowMode(newMode) then
+		beginTransition() -- eski kareden yumuşak geçiş (gerekirse çağıran SnapBehindCharacter ile iptal eder)
+	end
 	if isFollowMode(newMode) then
 		if not wasFollow then
 			-- Senaryolu kameradan dönüş: mevcut bakış açısını koru, pivotu anında yerleştir
@@ -284,8 +334,14 @@ local function connectInput()
 			local mode = currentMode
 			if mode and isFollowMode(mode) then
 				local profile = getProfile(mode)
-				local d = (userDistance[mode] or profile.Distance) - input.Position.Z * CameraConfig.ZoomStep
-				userDistance[mode] = math.clamp(d, profile.MinDistance, profile.MaxDistance)
+				if followSubject then
+					local _, base, minD, maxD = framedValues(profile)
+					local d = base * (vehicleZoom[mode] or 1) - input.Position.Z * CameraConfig.ZoomStep * 1.5
+					vehicleZoom[mode] = math.clamp(d, minD, maxD) / base
+				else
+					local d = (userDistance[mode] or profile.Distance) - input.Position.Z * CameraConfig.ZoomStep
+					userDistance[mode] = math.clamp(d, profile.MinDistance, profile.MaxDistance)
+				end
 			end
 		end
 	end)
@@ -300,8 +356,14 @@ local function connectInput()
 			if mode and isFollowMode(mode) then
 				local profile = getProfile(mode)
 				local ratio = scale / math.max(lastPinchScale, 0.01)
-				local d = (userDistance[mode] or profile.Distance) / math.max(ratio, 0.01)
-				userDistance[mode] = math.clamp(d, profile.MinDistance, profile.MaxDistance)
+				if followSubject then
+					local _, base, minD, maxD = framedValues(profile)
+					local d = base * (vehicleZoom[mode] or 1) / math.max(ratio, 0.01)
+					vehicleZoom[mode] = math.clamp(d, minD, maxD) / base
+				else
+					local d = (userDistance[mode] or profile.Distance) / math.max(ratio, 0.01)
+					userDistance[mode] = math.clamp(d, profile.MinDistance, profile.MaxDistance)
+				end
 			end
 			lastPinchScale = scale
 		else
@@ -336,17 +398,23 @@ local function stepFollow(dt: number, mode: string)
 
 	applyLookInput(dt, profile)
 
-	-- Araç kamerası: oyuncu bir süre bakış girişi yapmazsa aracın gidiş yönünün arkasına yumuşakça döner
+	-- Araç hızı (hız hissi, takip keskinliği)
+	local subjectVelocity = if followSubject then followSubject.AssemblyLinearVelocity else Vector3.zero
+	local flatSpeed = Vector3.new(subjectVelocity.X, 0, subjectVelocity.Z).Magnitude
+	local speedFrac = if followSubject then math.clamp(flatSpeed / (if followFraming then followFraming.MaxSpeed else 100), 0, 1) else 0
+
+	-- Araç kamerası: oyuncu bir süre bakış girişi yapmazsa aracın arkasına yumuşakça döner.
+	-- Yüksek hızda daha sıkı takip; yokuşta aracın eğimini kısmen izler (rampada yol görünür kalır).
 	if autoFollowHeading and followSubject and os.clock() - lastLookInput > AUTO_FOLLOW_DELAY then
-		local velocity = followSubject.AssemblyLinearVelocity
-		local flatSpeed = Vector3.new(velocity.X, 0, velocity.Z).Magnitude
 		if flatSpeed > 4 then
 			local look = followSubject.CFrame.LookVector
-			local heading = math.atan2(-look.X, -look.Z)
-			-- geri giderken kamerayı ters çevirme
-			local alpha = MathUtil.SmoothAlpha(2.2, dt)
+			local heading = math.atan2(-look.X, -look.Z) -- aracın burnu: geri giderken kamera dönmez
+			local sharpness = (profile.AutoFollowSharpness or 2.2) * (0.7 + 0.8 * speedFrac)
+			local alpha = MathUtil.SmoothAlpha(sharpness, dt)
+			local vehiclePitch = math.asin(math.clamp(look.Y, -1, 1))
+			local wantedPitch = (profile.AutoPitch or -12) * DEG + vehiclePitch * (profile.PitchFollow or 0)
 			targetYaw = MathUtil.LerpAngle(targetYaw, heading, alpha)
-			targetPitch = MathUtil.Lerp(targetPitch, -12 * DEG, alpha)
+			targetPitch = MathUtil.Lerp(targetPitch, wantedPitch, alpha)
 		end
 	end
 
@@ -364,6 +432,18 @@ local function stepFollow(dt: number, mode: string)
 	end
 	if snapNextFrame or pivot == nil or profile.Distance == 0 then
 		pivot = targetPivot
+	elseif followSubject then
+		-- Araç: yatayda hız ileri beslemesi → hızla artan gecikme (eski: hız/keskinlik ≈ 12 stud) yok;
+		-- dikeyde ayrı, daha yumuşak süzgeç → tümsekler kamerayı sarsmaz.
+		local current = pivot :: Vector3
+		local predicted = current + Vector3.new(subjectVelocity.X, 0, subjectVelocity.Z) * dt
+		local a = MathUtil.SmoothAlpha(profile.FollowSharpness, dt)
+		local ay = MathUtil.SmoothAlpha(profile.VerticalSharpness or profile.FollowSharpness, dt)
+		pivot = Vector3.new(
+			MathUtil.Lerp(predicted.X, targetPivot.X, a),
+			MathUtil.Lerp(current.Y, targetPivot.Y, ay),
+			MathUtil.Lerp(predicted.Z, targetPivot.Z, a)
+		)
 	else
 		pivot = (pivot :: Vector3):Lerp(targetPivot, MathUtil.SmoothAlpha(profile.FollowSharpness, dt))
 	end
@@ -371,6 +451,12 @@ local function stepFollow(dt: number, mode: string)
 
 	local rotation = CFrame.fromOrientation(pitch, yaw, 0)
 	local yawOnly = CFrame.fromOrientation(0, yaw, 0)
+	-- Motosiklette yatışın bir kısmını izle (profil RollFollow); otomobilde 0
+	local rollTarget = 0
+	if followSubject and profile.RollFollow and profile.RollFollow > 0 then
+		rollTarget = math.asin(math.clamp(followSubject.CFrame.RightVector.Y, -1, 1)) * profile.RollFollow
+	end
+	vehicleRoll = MathUtil.Lerp(vehicleRoll, rollTarget, MathUtil.SmoothAlpha(6, dt))
 
 	local cameraPosition: Vector3
 	if profile.Distance == 0 then
@@ -388,12 +474,18 @@ local function stepFollow(dt: number, mode: string)
 	else
 		local side = getSettings():Get("ShoulderSide")
 		local shoulder = profile.ShoulderOffset
+		local shoulderY, framedDistance = framedValues(profile)
 		-- 1) Pivot → omuz noktası (yan + yukarı), duvara girmesin
-		local shoulderTarget = pivotPos + yawOnly:VectorToWorldSpace(Vector3.new(shoulder.X * side, shoulder.Y, 0))
+		local shoulderTarget = pivotPos + yawOnly:VectorToWorldSpace(Vector3.new(shoulder.X * side, shoulderY, 0))
 		local shoulderPoint = castSafe(pivotPos, shoulderTarget, profile.CollisionRadius)
 
-		-- 2) Omuz → geri (oyuncu yakınlaştırma tercihi)
-		local wanted = userDistance[mode] or profile.Distance
+		-- 2) Omuz → geri (oyuncu yakınlaştırma tercihi; araçta hızla biraz açılır)
+		local wanted
+		if followSubject then
+			wanted = framedDistance * (vehicleZoom[mode] or 1) + (profile.SpeedDistanceBoost or 0) * speedFrac
+		else
+			wanted = userDistance[mode] or profile.Distance
+		end
 		local backTarget = shoulderPoint - rotation.LookVector * wanted
 		local safePoint = castSafe(shoulderPoint, backTarget, profile.CollisionRadius)
 		local allowed = (safePoint - shoulderPoint).Magnitude
@@ -416,16 +508,32 @@ local function stepFollow(dt: number, mode: string)
 	end
 	snapNextFrame = false
 
-	camera.CFrame = CFrame.new(cameraPosition) * rotation
-	camera.Focus = CFrame.new(pivotPos)
-
-	-- FOV: depar sırasında hafif artış = hız hissi
+	-- FOV: depar sırasında / araçta hızla hafif artış = hız hissi ("Hareketi azalt" kapatır)
+	local reduceMotion = getSettings():Get("ReduceMotion") == true
 	local fovTarget = profile.FieldOfView + getSettings():Get("FieldOfViewOffset")
-	if character:GetMovementState() == Constants.MovementStates.Sprint then
+	if character:GetMovementState() == Constants.MovementStates.Sprint and not followSubject then
 		fovTarget += profile.SprintFovBoost
 	end
+	if followSubject and not reduceMotion then
+		fovTarget += (profile.SpeedFovBoost or 0) * speedFrac ^ 1.5
+	end
 	currentFov = MathUtil.Lerp(currentFov, fovTarget, MathUtil.SmoothAlpha(8, dt))
-	camera.FieldOfView = currentFov
+
+	local final = CFrame.new(cameraPosition) * rotation * CFrame.Angles(0, 0, vehicleRoll)
+	local fov = currentFov
+	if transitionFrom then
+		transitionTime += dt
+		local t = math.clamp(transitionTime / transitionDuration, 0, 1)
+		local e = t * t * (3 - 2 * t)
+		final = (transitionFrom :: CFrame):Lerp(final, e)
+		fov = MathUtil.Lerp(transitionFromFov, currentFov, e)
+		if t >= 1 then
+			transitionFrom = nil
+		end
+	end
+	camera.CFrame = final
+	camera.Focus = CFrame.new(pivotPos)
+	camera.FieldOfView = fov
 end
 
 local function stepScripted(dt: number, entry)
@@ -534,9 +642,16 @@ function CameraController:Release(owner: string)
 	end
 end
 
--- Araç sistemleri (Aşama 3) takip edilecek parçayı burada verir; nil → karakter
-function CameraController:SetFollowSubject(part: BasePart?)
+-- Araç sistemleri takip edilecek parçayı burada verir; nil → karakter.
+-- framing: { Length, RoofHeight (şasi merkezine göre), MaxSpeed } → mesafe/yükseklik araca göre.
+-- smooth: true ise kamera eski karesinden yumuşakça yeni hedefe geçer (araca binme/inme).
+function CameraController:SetFollowSubject(part: BasePart?, framing: Framing?, smooth: boolean?)
+	if smooth then
+		beginTransition()
+	end
 	followSubject = part
+	followFraming = if part then framing else nil
+	vehicleRoll = 0
 	snapNextFrame = true
 	refreshFilter()
 end
@@ -549,7 +664,16 @@ function CameraController:SetCursorFree(owner: string, free: boolean)
 	cursorFreeOwners[owner] = if free then true else nil
 end
 
-function CameraController:SnapBehindCharacter()
+-- smooth = false/nil: anında yerleş (yeniden doğma, perde arkasında geçiş) ve süren geçişi iptal et.
+-- smooth = true: aynı hedef, ama kamera bulunduğu kareden oraya yumuşakça kayar.
+function CameraController:SnapBehindCharacter(smooth: boolean?)
+	if smooth then
+		if not transitionFrom then
+			beginTransition()
+		end
+	else
+		cancelTransition()
+	end
 	local root = followSubject or controllers.CharacterController:GetRootPart()
 	if root then
 		local look = root.CFrame.LookVector

@@ -221,12 +221,13 @@ local function requestMenuCamera(kind: string)
 	setGrade(true)
 end
 
-local function releaseMenuCamera()
+-- smooth: oyun içi menüden dönüşte kamera yumuşakça arkaya kayar; perde arkasındaki girişte anında yerleşir
+local function releaseMenuCamera(smooth: boolean?)
 	local camera = controllers.CameraController
 	camera:Release(OWNER)
 	setGrade(false)
 	if not inVehicle() then
-		camera:SnapBehindCharacter()
+		camera:SnapBehindCharacter(smooth)
 	end
 end
 
@@ -309,7 +310,7 @@ local function resume()
 	end
 	hideMenu(duration(0.25))
 	lockGameplay(false)
-	releaseMenuCamera()
+	releaseMenuCamera(true)
 	setState("Playing")
 	refreshPauseButton()
 	playSound("Back")

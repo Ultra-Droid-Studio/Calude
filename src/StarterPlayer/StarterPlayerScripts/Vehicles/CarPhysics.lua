@@ -149,6 +149,8 @@ function CarPhysics.new(model: Model, def)
 			Speed = 0, ForwardSpeed = 0, Gear = "N", RpmNorm = 0, Throttle = 0, Brake = 0,
 			Steer = 0, SteerDeg = 0, SteerLimit = 0, SideSlip = 0, YawRate = 0, LongG = 0, LatG = 0,
 			Contacts = 0, Handbrake = 0, StabilityTorque = 0, Airborne = false,
+			-- Gösterge ışıkları (HUD): sürüş yardımı bu karede müdahale ediyor mu
+			AbsActive = false, TcActive = false, EscActive = false,
 		},
 	}, CarPhysics)
 	return self
@@ -279,6 +281,7 @@ function CarPhysics:Step(dt: number, throttleIn: number, brakeIn: number, steerI
 
 	-- ===== 4. Tekerlekler =====
 	local contacts = 0
+	local absActive, tcActive = false, false
 	local rollingFactor = 0
 	local probeIndex = self.ProbeIndex
 	for i, w in self.Wheels do
@@ -358,6 +361,13 @@ function CarPhysics:Step(dt: number, throttleIn: number, brakeIn: number, steerI
 		end
 		w.Motor.AngularVelocity = target
 		w.Motor.MotorMaxTorque = torque
+		if contact and math.abs(vl) > 3 then
+			if brake > 0.3 and slipRatio < -C.AbsSlip * 0.6 then
+				absActive = true -- ABS kaymayı sınırlıyor
+			elseif w.DriveShare > 0 and throttle > 0.3 and slipRatio > math.max(p.TractionSlip * 0.7, 0.05) then
+				tcActive = true -- çekiş kontrolü patinajı sınırlıyor
+			end
+		end
 
 		if w.Steers then
 			local deg = if (turningRight and not w.Left) or (not turningRight and w.Left) then innerDeg else outerDeg
@@ -460,6 +470,9 @@ function CarPhysics:Step(dt: number, throttleIn: number, brakeIn: number, steerI
 	t.Handbrake = hb
 	t.StabilityTorque = stabilityTorque / math.max(self.YawInertia, 1)
 	t.Airborne = airborne
+	t.AbsActive = absActive
+	t.TcActive = tcActive
+	t.EscActive = math.abs(stabilityTorque) > self.YawInertia * 0.4
 end
 
 function CarPhysics:IsBraking(): boolean

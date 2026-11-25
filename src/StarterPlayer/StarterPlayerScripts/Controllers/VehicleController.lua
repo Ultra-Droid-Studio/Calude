@@ -105,6 +105,10 @@ local function readInputs()
 	if math.abs(stickX) > 0.15 then
 		steer = stickX
 	end
+	local touchSteer = input:GetAnalog("VehSteer") -- mobil direksiyon pedi (Aşama 3)
+	if math.abs(touchSteer) > 0.02 then
+		steer = touchSteer
+	end
 	return throttle, brake, math.clamp(steer, -1, 1), input:IsActionActive("VehHandbrake"), input:IsActionActive("VehHorn")
 end
 
@@ -121,6 +125,10 @@ local function readCarInputs()
 	if magnitude > STICK_DEADZONE then
 		local scaled = math.clamp((magnitude - STICK_DEADZONE) / (1 - STICK_DEADZONE), 0, 1)
 		steer = math.sign(stickX) * scaled ^ STICK_EXPO
+	end
+	local touchSteer = input:GetAnalog("VehSteer") -- mobil direksiyon pedi (eğri pedin kendisinde)
+	if math.abs(touchSteer) > 0.02 then
+		steer = touchSteer
 	end
 	return throttle, brake, math.clamp(steer, -1, 1), input:IsActionActive("VehHandbrake"), input:IsActionActive("VehHorn")
 end
@@ -302,9 +310,9 @@ local function leave()
 	maid:Clean()
 	local camera = controllers.CameraController
 	camera:Release("Vehicle")
-	camera:SetFollowSubject(nil)
+	camera:SetFollowSubject(nil, nil, true) -- araç kamerasından karaktere yumuşak geçiş
 	camera:SetAutoFollowHeading(false)
-	camera:SnapBehindCharacter()
+	camera:SnapBehindCharacter(true)
 	controllers.InputController:SetContext("Vehicle", false)
 	controllers.MobileControlsController:SetLayout("OnFoot")
 	setDefaultControls(true)
@@ -354,11 +362,20 @@ local function enter(seat: Seat)
 	end
 	current = c
 
+	-- Kamera çerçevesi aracın gerçek boyutundan (sınır kutusu): uzunluk ve şasi merkezine göre tavan yüksekliği
+	local framing = nil
+	local okBox, boxCFrame, boxSize = pcall(function()
+		return model:GetBoundingBox()
+	end)
+	if okBox and c.Chassis then
+		local roof = (boxCFrame.Position.Y + boxSize.Y / 2) - c.Chassis.Position.Y
+		framing = { Length = boxSize.Z, RoofHeight = math.max(roof, 0.5), MaxSpeed = def.MaxSpeed }
+	end
 	local camera = controllers.CameraController
 	camera:RequestMode("Vehicle", if isBike then "Motorcycle" else "Vehicle", 20)
-	camera:SetFollowSubject(c.Chassis)
+	camera:SetFollowSubject(c.Chassis, framing, true)
 	camera:SetAutoFollowHeading(true)
-	camera:SnapBehindCharacter()
+	camera:SnapBehindCharacter(true)
 
 	setDefaultControls(false)
 	ProximityPromptService.Enabled = false

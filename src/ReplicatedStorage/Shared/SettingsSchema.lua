@@ -38,6 +38,7 @@ SettingsSchema.Definitions = {
 
 	-- ===== Kontroller =====
 	{ Key = "MobileButtonScale", Category = "Controls", Type = "enum", Options = { 0.85, 1, 1.2 }, Default = 1 },
+	{ Key = "MobileSteering", Category = "Controls", Type = "enum", Options = { "Pad", "Buttons" }, Default = "Pad" },
 }
 
 local byKey = {}
