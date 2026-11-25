@@ -197,6 +197,7 @@ local function minimapSlot(parent: Instance): Frame
 		Parent = parent,
 	})
 	slot:SetAttribute("ReservedFor", "Minimap")
+	slot.Visible = false -- Aşama 4: MinimapController aynı dikdörtgene gerçek haritayı çizer
 	round(slot)
 	new("UIStroke", { Color = C.White, Transparency = 0.75, Thickness = 1.5, Parent = slot })
 	label(slot, {

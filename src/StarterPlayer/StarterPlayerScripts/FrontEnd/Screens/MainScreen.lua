@@ -37,7 +37,7 @@ function MainScreen.new(ctx)
 		Name = "Column",
 		AnchorPoint = Vector2.new(0, 0.5),
 		Position = UDim2.new(0, 80, 0.5, 0),
-		Size = UDim2.fromOffset(Theme.Size.ColumnWidth, 420),
+		Size = UDim2.fromOffset(Theme.Size.ColumnWidth, 486),
 		BackgroundTransparency = 1,
 		Parent = self.Root,
 	})
@@ -93,7 +93,7 @@ function MainScreen.new(ctx)
 	local list = new("Frame", {
 		Name = "Buttons",
 		Position = UDim2.fromOffset(0, 150),
-		Size = UDim2.new(1, 0, 0, 3 * Theme.Size.MainButton + 16),
+		Size = UDim2.new(1, 0, 0, 4 * Theme.Size.MainButton + 24),
 		BackgroundTransparency = 1,
 		Parent = column,
 	}, { Widgets.List(8) })
@@ -114,11 +114,19 @@ function MainScreen.new(ctx)
 		OnActivate = ctx.Actions.Garage,
 		OnHover = hover,
 	})
-	self._settings = Widgets.MenuButton(list, {
+	self._map = Widgets.MenuButton(list, {
 		Index = "03",
+		Text = Strings.Get("Main.Map"),
+		Sub = Strings.Get("Main.Map.Sub"),
+		LayoutOrder = 3,
+		OnActivate = ctx.Actions.Map,
+		OnHover = hover,
+	})
+	self._settings = Widgets.MenuButton(list, {
+		Index = "04",
 		Text = Strings.Get("Main.Settings"),
 		Sub = Strings.Get("Main.Settings.Sub"),
-		LayoutOrder = 3,
+		LayoutOrder = 4,
 		OnActivate = ctx.Actions.Settings,
 		OnHover = hover,
 	})
@@ -126,7 +134,7 @@ function MainScreen.new(ctx)
 	-- Durum satırı (şehir hazır mı / bağlanılıyor / hata)
 	local status = new("Frame", {
 		Name = "Status",
-		Position = UDim2.fromOffset(20, 150 + 3 * Theme.Size.MainButton + 16 + 22),
+		Position = UDim2.fromOffset(20, 150 + 4 * Theme.Size.MainButton + 24 + 18),
 		Size = UDim2.new(1, -20, 0, 20),
 		BackgroundTransparency = 1,
 		Parent = column,
@@ -202,7 +210,7 @@ function MainScreen.new(ctx)
 		end
 	end)
 
-	self._items = { self._play.Item, self._garage.Item, self._settings.Item }
+	self._items = { self._play.Item, self._garage.Item, self._map.Item, self._settings.Item }
 	self.Focus:SetItems(self._items, 1)
 	return self
 end

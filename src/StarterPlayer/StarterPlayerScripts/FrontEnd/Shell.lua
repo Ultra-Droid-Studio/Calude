@@ -190,7 +190,9 @@ function Shell:UpdateLayout()
 	s = math.clamp(s, 0.5, 1.6)
 	self.Scale.Scale = s
 	self.Canvas.Size = UDim2.fromScale(1 / s, 1 / s)
-	self.PauseButton.Position = UDim2.fromOffset(topLeft.X + math.floor(16 * s), topLeft.Y + math.floor(10 * s))
+	-- Sağ üst (sol üst köşe haritasına ait)
+	local width = self.Gui.AbsoluteSize.X
+	self.PauseButton.Position = UDim2.fromOffset(width - bottomRight.X - math.floor(60 * s), topLeft.Y + math.floor(10 * s))
 	self._pauseScale.Scale = s
 	self._toast.Position = UDim2.new(0.5, 0, 1, -(bottomRight.Y + math.floor(90 * s)))
 	self._toast.Size = UDim2.fromOffset(0, math.floor(40 * s))
@@ -273,6 +275,12 @@ function Shell:SetHints(device: string, screen: string?, paused: boolean)
 	if screen == "Settings" then
 		hint(if pad then "LB RB" else "Q E", "Hint.Tabs")
 		hint(if pad then "D-Pad" else "A D", "Hint.Adjust")
+	end
+	if screen == "Map" then
+		hint(if pad then "LB RB" else "Q E", "Hint.Zoom")
+		hint(if pad then "A" else "Enter", "Hint.SetDestination")
+		hint(if pad then "B" else "Backspace", "Hint.Back")
+		return
 	end
 	hint(if pad then "A" else "Enter", "Hint.Select")
 	if screen ~= "Main" then

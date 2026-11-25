@@ -35,7 +35,7 @@ local TABLE = {
 		["Hint.Adjust"] = "Ayarla",
 		["Hint.Close"] = "Kapat",
 		-- bildirimler
-		["Toast.InVehicle"] = "Menüyü açmak için önce araçtan in.",
+		["Toast.InVehicle"] = "Menü ve harita için aracı durdur.",
 		-- ayarlar
 		["Settings.Title"] = "AYARLAR",
 		["Settings.Back"] = "GERİ",
@@ -104,6 +104,45 @@ local TABLE = {
 		["Mobile.Sprint"] = "DEPAR",
 		["Mobile.Camera"] = "KAMERA",
 		["Mobile.Steer"] = "DİREKSİYON",
+		-- harita / navigasyon (Aşama 4)
+		["Main.Map"] = "HARİTA",
+		["Main.Map.Sub"] = "Hedef seç, rota oluştur",
+		["Map.Title"] = "HARİTA",
+		["Map.NoDestination"] = "Hedef yok. Haritaya dokun ya da listeden bir yer seç.",
+		["Map.Clear"] = "Hedefi temizle",
+		["Map.Recenter"] = "Konumuma dön",
+		["Map.Places"] = "YERLER",
+		["Map.Waypoint"] = "İşaretli nokta",
+		["Map.Route"] = "Rota: %s",
+		["Map.Unreachable"] = "Bu hedefe yol bulunamadı.",
+		["Map.NoRoad"] = "Yakınında yol yok; en yakın yola git.",
+		["Map.Offroad"] = "Son %s yol dışında.",
+		["Map.Arrived"] = "Hedefe vardın.",
+		["Nav.Left"] = "Sola dön",
+		["Nav.Right"] = "Sağa dön",
+		["Nav.SlightLeft"] = "Hafif sola",
+		["Nav.SlightRight"] = "Hafif sağa",
+		["Nav.UTurn"] = "U dönüşü yap",
+		["Nav.Continue"] = "Düz devam et",
+		["Nav.Arrive"] = "Hedef",
+		["Nav.Arrived"] = "Hedefe vardın",
+		["Nav.Remaining"] = "Kalan %s",
+		["Nav.Rerouting"] = "Rota yeniden hesaplanıyor…",
+		["Nav.OffroadEnd"] = "Yol bitti · hedef %s ileride",
+		["Hint.SetDestination"] = "Hedef koy",
+		["Hint.Zoom"] = "Yakınlaştır",
+		["Toast.MapInVehicle"] = "Haritayı açmak için aracı durdur.",
+		["POICat.Shop"] = "Market", ["POICat.Shop.Short"] = "M",
+		["POICat.Food"] = "Yeme-içme", ["POICat.Food.Short"] = "Y",
+		["POICat.Fuel"] = "Benzinlik", ["POICat.Fuel.Short"] = "B",
+		["POICat.Health"] = "Hastane", ["POICat.Health.Short"] = "+",
+		["POICat.Police"] = "Polis", ["POICat.Police.Short"] = "P",
+		["POICat.Hotel"] = "Konaklama", ["POICat.Hotel.Short"] = "K",
+		["POICat.Vehicle"] = "Araç", ["POICat.Vehicle.Short"] = "A",
+		["POICat.Leisure"] = "Eğlence", ["POICat.Leisure.Short"] = "E",
+		["POICat.Transport"] = "Ulaşım", ["POICat.Transport.Short"] = "U",
+		["POICat.Landmark"] = "Simge yer", ["POICat.Landmark.Short"] = "S",
+		["POICat.Rural"] = "Kırsal", ["POICat.Rural.Short"] = "R",
 		["Option.On"] = "AÇIK",
 		["Option.Off"] = "KAPALI",
 		["Bindings.Title"] = "TUŞLAR",
@@ -175,7 +214,7 @@ local TABLE = {
 		["Hint.Tabs"] = "Tab",
 		["Hint.Adjust"] = "Adjust",
 		["Hint.Close"] = "Close",
-		["Toast.InVehicle"] = "Exit the vehicle to open the menu.",
+		["Toast.InVehicle"] = "Stop the vehicle to open the menu or map.",
 		["Settings.Title"] = "SETTINGS",
 		["Settings.Back"] = "BACK",
 		["Settings.Reset"] = "Reset this tab",
@@ -242,6 +281,44 @@ local TABLE = {
 		["Mobile.Sprint"] = "SPRINT",
 		["Mobile.Camera"] = "CAMERA",
 		["Mobile.Steer"] = "STEER",
+		["Main.Map"] = "MAP",
+		["Main.Map.Sub"] = "Pick a destination, plan a route",
+		["Map.Title"] = "MAP",
+		["Map.NoDestination"] = "No destination. Tap the map or pick a place from the list.",
+		["Map.Clear"] = "Clear destination",
+		["Map.Recenter"] = "Center on me",
+		["Map.Places"] = "PLACES",
+		["Map.Waypoint"] = "Waypoint",
+		["Map.Route"] = "Route: %s",
+		["Map.Unreachable"] = "No road leads to this destination.",
+		["Map.NoRoad"] = "No road nearby; head to the nearest road.",
+		["Map.Offroad"] = "The last %s is off-road.",
+		["Map.Arrived"] = "You have arrived.",
+		["Nav.Left"] = "Turn left",
+		["Nav.Right"] = "Turn right",
+		["Nav.SlightLeft"] = "Keep left",
+		["Nav.SlightRight"] = "Keep right",
+		["Nav.UTurn"] = "Make a U-turn",
+		["Nav.Continue"] = "Continue straight",
+		["Nav.Arrive"] = "Destination",
+		["Nav.Arrived"] = "You have arrived",
+		["Nav.Remaining"] = "%s left",
+		["Nav.Rerouting"] = "Recalculating route…",
+		["Nav.OffroadEnd"] = "Road ends · destination %s ahead",
+		["Hint.SetDestination"] = "Set destination",
+		["Hint.Zoom"] = "Zoom",
+		["Toast.MapInVehicle"] = "Stop the vehicle to open the map.",
+		["POICat.Shop"] = "Shops", ["POICat.Shop.Short"] = "S",
+		["POICat.Food"] = "Food & drink", ["POICat.Food.Short"] = "F",
+		["POICat.Fuel"] = "Fuel", ["POICat.Fuel.Short"] = "G",
+		["POICat.Health"] = "Hospital", ["POICat.Health.Short"] = "+",
+		["POICat.Police"] = "Police", ["POICat.Police.Short"] = "P",
+		["POICat.Hotel"] = "Lodging", ["POICat.Hotel.Short"] = "H",
+		["POICat.Vehicle"] = "Vehicles", ["POICat.Vehicle.Short"] = "V",
+		["POICat.Leisure"] = "Leisure", ["POICat.Leisure.Short"] = "L",
+		["POICat.Transport"] = "Transport", ["POICat.Transport.Short"] = "T",
+		["POICat.Landmark"] = "Landmark", ["POICat.Landmark.Short"] = "M",
+		["POICat.Rural"] = "Countryside", ["POICat.Rural.Short"] = "R",
 		["Option.On"] = "ON",
 		["Option.Off"] = "OFF",
 		["Bindings.Title"] = "CONTROLS",
@@ -312,6 +389,19 @@ function Strings.Get(key: string, ...: any): string
 		if ok then
 			return formatted
 		end
+	end
+	return text
+end
+
+-- Mesafe metni: oyunun ölçeği 1 stud = 0.28 m. 1 km altı 10 m'ye yuvarlanır; üstü 0.1 km.
+function Strings.Distance(studs: number): string
+	local meters = studs * 0.28
+	if meters < 1000 then
+		return string.format("%d m", math.max(math.floor(meters / 10 + 0.5) * 10, 0))
+	end
+	local text = string.format("%.1f km", meters / 1000)
+	if language == "tr" then
+		text = string.gsub(text, "%.", ",")
 	end
 	return text
 end

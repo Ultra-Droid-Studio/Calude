@@ -42,7 +42,7 @@ for name, (w, h) in SCREENS.items():
                 checked += 1
                 overlaps = list(layout.FindOverlaps(rects, 4).values())
                 oob = list(layout.FindOutOfBounds(rects, w, h).values())
-                small = [k for k, r in rects.items() if k not in ("Minimap", "Hud") and min(r.W, r.H) < MIN_TOUCH]
+                small = [k for k, r in rects.items() if k not in ("Minimap", "Hud", "Guidance") and min(r.W, r.H) < MIN_TOUCH]
                 if overlaps or oob or small:
                     failures += 1
                     print(f"FAIL {name} {w}x{h} scale={user_scale} {kind}/{steering} base={base}: "
@@ -50,9 +50,9 @@ for name, (w, h) in SCREENS.items():
 # desktop
 for name, (w, h) in {"720p": (1280, 684), "1080p": (1920, 1044), "1440p": (2560, 1404), "small window": (1024, 600)}.items():
     d = layout.Desktop(w, h)
-    rects = {"Cluster": d.Cluster, "Minimap": d.Minimap}
+    rects = {"Cluster": d.Cluster, "Minimap": d.Minimap, "Guidance": d.Guidance}
     checked += 1
-    if layout.Overlaps(d.Cluster, d.Minimap, 4) or list(layout.FindOutOfBounds(lua.table_from(rects), w, h).values()):
+    if list(layout.FindOverlaps(lua.table_from(rects), 4).values()) or list(layout.FindOutOfBounds(lua.table_from(rects), w, h).values()):
         failures += 1
         print(f"FAIL desktop {name}")
 print(f"{checked} layouts checked, {failures} failures")

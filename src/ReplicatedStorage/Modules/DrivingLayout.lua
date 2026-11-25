@@ -74,6 +74,15 @@ function DrivingLayout.Touch(width, height, base, options)
 	end
 	r.Hud = rect(hudX, hudY, hudW, hudH)
 
+	-- Navigasyon yönlendirme paneli (Aşama 4): haritanın altında; HUD o sütuna inmişse onun da altında
+	local guideW = math.min(clamp(math.floor(map * 1.9), 170, 300), width - 2 * m)
+	local guideH = clamp(math.floor(base * 0.85), 44, 66)
+	local guideY = r.Minimap.Y + r.Minimap.H + gap
+	if r.Hud.X < m + guideW + gap and r.Hud.Y + r.Hud.H + gap > guideY then
+		guideY = r.Hud.Y + r.Hud.H + gap
+	end
+	r.Guidance = rect(m, guideY, guideW, guideH)
+
 	-- Üst sağ satır: in, far, çevir (sağdan sola)
 	local topRow = { "Exit" }
 	if kind ~= "Passenger" then
@@ -92,6 +101,17 @@ function DrivingLayout.Touch(width, height, base, options)
 	for _, name in ipairs(topRow) do
 		r[name] = rect(x, rowY, small, small)
 		x = x - small - gap
+	end
+	-- Yönlendirme paneli üst sağ satıra değiyorsa daralt; çok daralacaksa satırın altına in
+	local rowLeftEdge = x + small + gap
+	local g = r.Guidance
+	if g.Y < rowY + small + gap and g.Y + g.H + gap > rowY and g.X + g.W + gap > rowLeftEdge then
+		local fitW = rowLeftEdge - gap - g.X
+		if fitW >= 150 then
+			r.Guidance = rect(g.X, g.Y, fitW, g.H)
+		else
+			r.Guidance = rect(g.X, rowY + small + gap, g.W, g.H)
+		end
 	end
 
 	if kind == "Passenger" then
@@ -135,9 +155,12 @@ function DrivingLayout.Desktop(width, height)
 	local m = clamp(math.floor(minAxis * 0.03), 16, 40)
 	local cluster = clamp(math.floor(minAxis * 0.27), 170, 270)
 	local map = clamp(math.floor(minAxis * 0.24), 150, 240)
+	local guideW, guideH = math.max(map, 280), 64
 	return {
 		Cluster = rect(width - m - cluster, height - m - cluster, cluster, cluster),
 		Minimap = rect(m, height - m - map, map, map),
+		-- Navigasyon paneli haritanın hemen üstünde
+		Guidance = rect(m, height - m - map - 12 - guideH, guideW, guideH),
 		Margin = m,
 	}
 end

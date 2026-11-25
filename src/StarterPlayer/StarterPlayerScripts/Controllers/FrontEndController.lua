@@ -41,6 +41,7 @@ local MenuCamera = require(FrontEndFolder:WaitForChild("MenuCamera"))
 local MainScreen = require(ScreensFolder:WaitForChild("MainScreen"))
 local SettingsScreen = require(ScreensFolder:WaitForChild("SettingsScreen"))
 local GarageScreen = require(ScreensFolder:WaitForChild("GarageScreen"))
+local MapScreen = require(ScreensFolder:WaitForChild("MapScreen"))
 
 local FrontEndController = {
 	Name = "FrontEndController",
@@ -97,6 +98,13 @@ end
 
 local function inVehicle(): boolean
 	return controllers.VehicleController ~= nil and controllers.VehicleController:IsInVehicle()
+end
+
+-- Araçtayken menü/harita sadece araç neredeyse dururken açılır (sürüş girişleri o sırada askıya alınır)
+local STOPPED_SPEED = 3 -- stud/sn
+local function vehicleMoving(): boolean
+	local c = controllers.VehicleController and controllers.VehicleController:GetCurrent()
+	return c ~= nil and c.Chassis ~= nil and c.Chassis.AssemblyLinearVelocity.Magnitude > STOPPED_SPEED
 end
 
 local function isTouch(): boolean
@@ -165,12 +173,18 @@ local function lockGameplay(lock: boolean)
 		end)
 		controllers.MobileControlsController:SetLayout("Hidden")
 		input:SetContext("OnFoot", false)
+		if inVehicle() then
+			input:SetContext("Vehicle", false) -- araç tuşları menü tuşlarıyla aynı önceliktedir; askıya al
+		end
 		input:SetContext("Menu", true)
 		controllers.CharacterController:SetMovementLocked(OWNER, true)
 		setCoreGuiHidden(true)
 	else
 		input:SetContext("Menu", false)
 		input:SetContext("OnFoot", true)
+		if inVehicle() then
+			input:SetContext("Vehicle", true)
+		end
 		controllers.CharacterController:SetMovementLocked(OWNER, false)
 		pcall(function()
 			GuiService.TouchControlsEnabled = true
@@ -180,6 +194,8 @@ local function lockGameplay(lock: boolean)
 			setDefaultControls(true)
 			ProximityPromptService.Enabled = true
 			controllers.MobileControlsController:SetLayout("OnFoot")
+		else
+			controllers.MobileControlsController:SetLayout(controllers.VehicleController:GetMobileLayout())
 		end
 		setCoreGuiHidden(false)
 	end
@@ -288,13 +304,13 @@ local function hideMenu(d: number)
 end
 
 -- ===== Oyun içi menü =====
-local function openPause()
+local function openPause(): boolean
 	if state ~= "Playing" or menuVisible then
-		return
+		return menuVisible
 	end
-	if inVehicle() then
+	if inVehicle() and vehicleMoving() then
 		shell:Toast(Strings.Get("Toast.InVehicle"), duration(0.2))
-		return
+		return false
 	end
 	lockGameplay(true)
 	requestMenuCamera("Pause")
@@ -302,6 +318,20 @@ local function openPause()
 	screens.Main:SetStatus(Strings.Get("Status.Paused"), "info")
 	showMenu("Paused", true)
 	playSound("Select")
+	return true
+end
+
+-- Tam ekran harita: oyundaysa menüyü açıp doğrudan HARİTA ekranına geçer
+local function openMap()
+	if state == "Spawning" then
+		return
+	end
+	if state == "Playing" and not openPause() then
+		return
+	end
+	if menuVisible then
+		navigate("Map")
+	end
 end
 
 local function resume()
@@ -440,7 +470,9 @@ local function build()
 		navigate("Main")
 	end
 	shell = Shell.new({
-		OnPauseButton = openPause,
+		OnPauseButton = function()
+			openPause()
+		end,
 		OnLayout = function(compact: boolean)
 			for _, screen in screens do
 				screen:SetCompact(compact)
@@ -459,6 +491,9 @@ local function build()
 			Garage = function()
 				navigate("Garage")
 			end,
+			Map = function()
+				navigate("Map")
+			end,
 			Settings = function()
 				navigate("Settings")
 			end,
@@ -470,6 +505,14 @@ local function build()
 		OnMove = onMove,
 		Settings = controllers.SettingsController,
 		Back = back,
+	})
+	screens.Map = MapScreen.new({
+		Parent = shell.Canvas,
+		GetScale = getScale,
+		OnMove = onMove,
+		Back = back,
+		Navigation = controllers.NavigationController,
+		IsTouch = isTouch,
 	})
 	screens.Garage = GarageScreen.new({
 		Parent = shell.Canvas,
@@ -492,6 +535,9 @@ local function connectInput()
 		end,
 		Navigate = function(kind: string, dir: number)
 			local screen = currentScreen()
+			if screen.HandleNavigate and screen:HandleNavigate(kind, dir) then
+				return -- harita: kaydırma
+			end
 			screen.Focus:SetHighlight(true)
 			if kind == "Move" then
 				screen.Focus:Move(dir)
@@ -501,6 +547,10 @@ local function connectInput()
 		end,
 		Accept = function()
 			local screen = currentScreen()
+			if screen.HandleAccept and screen:HandleAccept() then
+				playSound("Select")
+				return
+			end
 			screen.Focus:SetHighlight(true)
 			if screen.Focus:Activate() then
 				playSound("Select")
@@ -518,7 +568,10 @@ local function connectInput()
 			currentScreen():HandleTab(dir)
 		end,
 		Close = resume,
-		Open = openPause,
+		Open = function()
+			openPause()
+		end,
+		OpenMap = openMap,
 	})
 end
 
@@ -534,6 +587,11 @@ end
 -- Başka sistemler (ör. ileride harita) oyun içi menüyü açabilir
 function FrontEndController:OpenPauseMenu()
 	openPause()
+end
+
+-- Tam ekran haritayı aç (M tuşu, köşe haritasına dokunma)
+function FrontEndController:OpenMap()
+	openMap()
 end
 
 function FrontEndController:Init(allControllers)

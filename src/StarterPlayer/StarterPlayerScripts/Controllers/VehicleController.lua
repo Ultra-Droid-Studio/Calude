@@ -409,6 +409,15 @@ function VehicleController:IsInVehicle(): boolean
 	return current ~= nil
 end
 
+-- Mobil buton düzeni (menüden araca dönüşte geri yüklemek için)
+function VehicleController:GetMobileLayout(): string
+	local c = current
+	if not c then
+		return "OnFoot"
+	end
+	return if not c.IsDriver then "Passenger" elseif c.IsBike then "Motorcycle" else "Car"
+end
+
 function VehicleController:Init(allControllers)
 	controllers = allControllers
 end

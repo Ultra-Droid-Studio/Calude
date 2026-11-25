@@ -48,6 +48,11 @@ function MenuInput.connect(inputController, handlers)
 		if action == "OpenMenu" then
 			handlers.Open()
 			return
+		elseif action == "OpenMap" then
+			if handlers.OpenMap then
+				handlers.OpenMap()
+			end
+			return
 		end
 		if not handlers.IsActive() then
 			return

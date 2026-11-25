@@ -30,6 +30,12 @@ InputConfig.Actions = {
 		Gamepad = {},
 		Hold = false,
 	},
+	-- Tam ekran harita (Aşama 4). Araçtayken de çalışır (araç dururken).
+	OpenMap = {
+		Keys = { Enum.KeyCode.M },
+		Gamepad = {},
+		Hold = false,
+	},
 	-- Araç telemetrisi ve test ölçümleri paneli (Aşama 2; geliştirme aracı)
 	ToggleTelemetry = {
 		Keys = { Enum.KeyCode.F4 },
@@ -66,7 +72,7 @@ InputConfig.Actions = {
 	MenuBack = { Context = "Menu", Keys = { Enum.KeyCode.Backspace }, Gamepad = { Enum.KeyCode.ButtonB }, Hold = false },
 	MenuTabPrev = { Context = "Menu", Keys = { Enum.KeyCode.Q }, Gamepad = { Enum.KeyCode.ButtonL1 }, Hold = false },
 	MenuTabNext = { Context = "Menu", Keys = { Enum.KeyCode.E }, Gamepad = { Enum.KeyCode.ButtonR1 }, Hold = false },
-	MenuClose = { Context = "Menu", Keys = { Enum.KeyCode.P }, Gamepad = {}, Hold = false },
+	MenuClose = { Context = "Menu", Keys = { Enum.KeyCode.P, Enum.KeyCode.M }, Gamepad = {}, Hold = false },
 	-- İleride: Interact (E), Inventory (Tab), Map (M)...
 }
 

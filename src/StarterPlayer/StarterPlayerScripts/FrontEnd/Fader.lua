@@ -40,10 +40,16 @@ local function capture(root: GuiObject): { Entry }
 			table.insert(list, { Instance = inst, Props = props })
 		end
 	end
-	add(root)
-	for _, d in root:GetDescendants() do
-		add(d)
+	-- "FaderSkip" attribute'lu alt ağaçlar atlanır (ör. binlerce parçalı harita tuvali)
+	local function walk(inst: Instance)
+		add(inst)
+		for _, child in inst:GetChildren() do
+			if not child:GetAttribute("FaderSkip") then
+				walk(child)
+			end
+		end
 	end
+	walk(root)
 	return list
 end
 
