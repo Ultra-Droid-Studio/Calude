@@ -30,6 +30,12 @@ InputConfig.Actions = {
 		Gamepad = {},
 		Hold = false,
 	},
+	-- Trafik/yaya yapay zekâsı hata ayıklama görünümü (Aşama 6; geliştirme aracı)
+	AmbientDebug = {
+		Keys = { Enum.KeyCode.F7 },
+		Gamepad = {},
+		Hold = false,
+	},
 	-- Tam ekran harita (Aşama 4). Araçtayken de çalışır (araç dururken).
 	OpenMap = {
 		Keys = { Enum.KeyCode.M },

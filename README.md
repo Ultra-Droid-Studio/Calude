@@ -12,16 +12,18 @@
 | `place/SOLARA_Fix2_MenuCity.rbxlx` | + bug-fix roadmap step 2 (far city missing behind the main menu). |
 | `place/SOLARA_Fix3_WheelWobble.rbxlx` | + bug-fix roadmap step 3 (wheels wobbling by themselves, cars and motorcycles). |
 | `place/SOLARA_Fix4_BlackLayer.rbxlx` | + bug-fix roadmap step 4 (dark layer covering the screen in game). |
-| `place/SOLARA_Fix5_MinimapFrame.rbxlx` | **Current build:** + bug-fix roadmap step 5 (minimap content spilling outside its frame). Open this in Roblox Studio. |
+| `place/SOLARA_Fix5_MinimapFrame.rbxlx` | + bug-fix roadmap step 5 (minimap content spilling outside its frame). |
+| `place/SOLARA_Phase6_TrafficAI.rbxlx` | **Current build:** + Phase 6 (traffic and pedestrian AI, sidewalk parser fix). Open this in Roblox Studio. |
 | `tools/build_place.py` | Writes `src/` into a place file. Existing scripts get their Source replaced, missing scripts/folders are inserted, nothing is deleted, and the output is verified. |
 | `tools/place_patches.json` | Explicit property changes applied by the build (for example `Players.CharacterAutoLoads`). |
 | `docs/` | Phase 0 audit, Phase 1 notes, Phase 2 car physics report + test course procedure, Phase 3 driving UI, Phase 4 navigation. |
 | `tools/test_driving_layout.py` | Runs the real `DrivingLayout.lua` (needs `pip install lupa`) over 184 screen/option combinations: overlap, bounds, 44 px touch targets. |
 | `tools/test_navigation.py` | Runs the real `Navigation.lua` on the real `MapDefinitions` data (needs `lupa`): 1260 routes, snapping, unreachable cases, simulated drives with rerouting. |
+| `tools/test_ambient.py` | Runs the real traffic/pedestrian modules on the real MapData (needs `lupa`): lane and sidewalk graphs, 10 min downtown, extra seeds, blocked lane, jaywalking player, moving player, two players, night/noon. `tools/ambient_data.py` loads the map for it. |
 | `tools/car_model.py` | Offline mirror of the car physics formulas; prints derived tuning values and predicted performance. |
 
 Rebuild the place after editing `src/`:
 
 ```
-python3 tools/build_place.py place/SOLARA_Phase3.rbxlx src place/SOLARA_Fix5_MinimapFrame.rbxlx --patches tools/place_patches.json
+python3 tools/build_place.py place/SOLARA_Phase3.rbxlx src place/SOLARA_Phase6_TrafficAI.rbxlx --patches tools/place_patches.json
 ```

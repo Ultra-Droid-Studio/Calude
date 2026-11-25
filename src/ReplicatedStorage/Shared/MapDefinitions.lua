@@ -77,14 +77,17 @@ local function parse()
 			data.Nodes[n.Id] = n
 			table.insert(data.NodeList, n)
 		elseif t == "E" then
-			local flags = f[12] or ""
+			-- Satır biçimi: E|id|a|b|tür|genişlik|ileri|geri|hız|ad|bayraklar|köprü0|köprü1
+			-- (Düzeltme, kullanıcı onayıyla: bayraklar eskiden f[12], köprü aralığı f[13..14] okunuyordu →
+			-- kaldırımlar ve köprü korkulukları hiç üretilmiyordu.)
+			local flags = f[11] or ""
 			local e: Edge = {
 				Id = num(f[2]), A = num(f[3]), B = num(f[4]), Kind = f[5], Width = num(f[6]),
 				LanesForward = num(f[7]), LanesBackward = num(f[8]), Speed = num(f[9]), Name = f[10] or "",
 				Bridge = string.find(flags, "b", 1, true) ~= nil,
 				Sidewalk = string.find(flags, "w", 1, true) ~= nil,
 				Length = 0,
-				BridgeSpan = if f[13] and f[13] ~= "" then { num(f[13]), num(f[14]) } else nil,
+				BridgeSpan = if f[12] and f[12] ~= "" then { num(f[12]), num(f[13]) } else nil,
 			}
 			data.Edges[e.Id] = e
 			table.insert(data.EdgeList, e)
