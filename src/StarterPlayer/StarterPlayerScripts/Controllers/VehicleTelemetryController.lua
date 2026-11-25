@@ -335,10 +335,11 @@ local function refreshPanel()
 		table.insert(lines, string.format("direksiyon %+.2f -> %+.1f° (sınır %.1f°)", t.Steer, t.SteerDeg, t.SteerLimit))
 		table.insert(lines, string.format("kayma β %+.1f°  yaw %+.0f°/s  denge %+.1f", t.SideSlip, t.YawRate, t.StabilityTorque))
 		table.insert(lines, string.format("temas %d/4  havada %s", t.Contacts, if t.Airborne then "EVET" else "hayır"))
-		table.insert(lines, "TEKER  sıkış  yük   kayma%  açı°   μ    zemin")
+		table.insert(lines, "TEKER  sıkış  yük   kayma%  açı°   μ    zemin  dir.hata°  titreme°")
 		for _, w in car.Wheels do
-			table.insert(lines, string.format("%-5s  %4.2f  %4.2f  %+5.0f  %5.1f  %4.2f  %4.2f%s",
-				w.Name, w.Compression, w.Load, w.SlipRatio * 100, w.SlipAngle, w.Mu, w.SurfaceGrip, if w.Sliding then "  KAYIYOR" else ""))
+			table.insert(lines, string.format("%-5s  %4.2f  %4.2f  %+5.0f  %5.1f  %4.2f  %4.2f  %+6.2f  %6.2f%s",
+				w.Name, w.Compression, w.Load, w.SlipRatio * 100, w.SlipAngle, w.Mu, w.SurfaceGrip,
+				w.SteerError, w.Wobble, if w.Sliding then "  KAYIYOR" else ""))
 		end
 	else
 		table.insert(lines, "Otomobile sürücü olarak bin (motosiklet bu panelin dışında).")

@@ -100,6 +100,9 @@ function CarPhysics.new(model: Model, def)
 			SlipAngle = 0,
 			Mu = 0,
 			Contact = false,
+			SteerError = 0, -- gerçek direksiyon açısı − istenen (°)
+			SteerMean = 0,
+			Wobble = 0, -- titreme: hatanın ortalamasından ortalama sapması (°)
 		})
 	end
 	local sprung = model:GetAttribute("SprungMass") or chassis.AssemblyMass
@@ -144,6 +147,7 @@ function CarPhysics.new(model: Model, def)
 		LastRecovery = -100,
 		LastVelocity = chassis.AssemblyLinearVelocity,
 		RecoveryRequested = false,
+		RearSliding = false, -- önceki karede arka lastiklerden biri kayıyor muydu
 		-- telemetri (her karede yazılır, yeniden yaratılmaz)
 		Telemetry = {
 			Speed = 0, ForwardSpeed = 0, Gear = "N", RpmNorm = 0, Throttle = 0, Brake = 0,
@@ -232,9 +236,10 @@ function CarPhysics:Step(dt: number, throttleIn: number, brakeIn: number, steerI
 	self.Steer += math.clamp(steerIn - self.Steer, -rate * dt, rate * dt)
 	local limit = VehiclePhysics.SteerLimit(def, d, planarSpeed)
 	local steerDeg = self.Steer * limit
-	-- Arka kayarken oyuncu direksiyonu bırakmışsa hız vektörüne doğru kendiliğinden karşı direksiyon
+	-- Arka kayarken oyuncu direksiyonu bırakmışsa hız vektörüne doğru kendiliğinden karşı direksiyon.
+	-- Sadece arka lastikler GERÇEKTEN kayarken (Hata düzeltme 3): normal sürüşte tekerleri kendi kendine oynatmasın.
 	local sideSlip = if planarSpeed > 6 and vLong > 2 then math.atan2(vLat, vLong) else 0
-	if math.abs(self.Steer) < 0.25 and math.abs(sideSlip) > math.rad(4) then
+	if self.RearSliding and math.abs(self.Steer) < 0.25 and math.abs(sideSlip) > math.rad(4) then
 		steerDeg += math.clamp(math.deg(sideSlip) * p.CounterSteer, -def.MaxSteer * 0.5, def.MaxSteer * 0.5)
 	end
 	steerDeg = math.clamp(steerDeg, -def.MaxSteer, def.MaxSteer)
@@ -281,6 +286,8 @@ function CarPhysics:Step(dt: number, throttleIn: number, brakeIn: number, steerI
 
 	-- ===== 4. Tekerlekler =====
 	local contacts = 0
+	local rearSliding = false
+	local wobbleAlpha = math.clamp(dt * 2, 0, 1) -- ~0.5 sn zaman sabiti
 	local absActive, tcActive = false, false
 	local rollingFactor = 0
 	local probeIndex = self.ProbeIndex
@@ -369,9 +376,19 @@ function CarPhysics:Step(dt: number, throttleIn: number, brakeIn: number, steerI
 			end
 		end
 
+		local wantedDeg = 0
 		if w.Steers then
-			local deg = if (turningRight and not w.Left) or (not turningRight and w.Left) then innerDeg else outerDeg
-			w.Strut.TargetAngle = -deg
+			wantedDeg = if (turningRight and not w.Left) or (not turningRight and w.Left) then innerDeg else outerDeg
+			w.Strut.TargetAngle = -wantedDeg
+		end
+		-- Telemetri: mafsalın şasiye göre gerçek açısı (sağ +) ve titreme ölçüsü
+		local actualDeg = math.deg(math.atan2(wForward:Dot(right), wForward:Dot(forward)))
+		local steerError = actualDeg - wantedDeg
+		w.SteerError = steerError
+		w.SteerMean += (steerError - w.SteerMean) * wobbleAlpha
+		w.Wobble += (math.abs(steerError - w.SteerMean) - w.Wobble) * wobbleAlpha
+		if w.Rear and w.Sliding and contact then
+			rearSliding = true
 		end
 
 		if contact then
@@ -386,6 +403,7 @@ function CarPhysics:Step(dt: number, throttleIn: number, brakeIn: number, steerI
 		w.Contact = contact
 	end
 	self.ProbeIndex = (probeIndex % #self.Wheels) + 1
+	self.RearSliding = rearSliding
 
 	-- ===== 5. Şasi kuvvetleri: kaldırma (sabit) + hava direnci + yuvarlanma + yere basma =====
 	local force = Vector3.new(0, self.BaseLift, 0)

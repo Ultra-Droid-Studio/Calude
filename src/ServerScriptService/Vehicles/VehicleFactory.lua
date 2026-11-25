@@ -23,6 +23,19 @@ VehicleFactory.BodyGroup = "VehicleBody"
 VehicleFactory.WheelGroup = "VehicleWheels"
 
 local M = Enum.Material
+
+-- Teker titremesi düzeltmesi (Hata düzeltme 3):
+--   * Mafsal (şasi ↔ teker arasındaki ara parça) eskiden 0.6³ varsayılan yoğunlukta, kütlesi 0.15 idi: teker
+--     20–80, şasi 120–520 kat ağırdı. Bu kütle farkı kısıt çözücüsünü titretiyor, tekerler kendi kendine
+--     sağa sola oynuyordu. Mafsal artık tekerin bu oranında (göbek + fren grubu gibi).
+--   * Direksiyon servosu eskiden "toplam ağırlık × 40" tork kullanıyordu; artık tekeri köşe yükü altında
+--     durağanken çevirmeye yetecek tork × pay.
+local KNUCKLE_MASS_RATIO = 0.4
+local STEER_SERVO_MARGIN = 4
+
+local function steerServoTorque(totalMass: number, gravity: number, wheelCount: number, mu: number, radius: number): number
+	return totalMass * gravity / math.max(wheelCount, 1) * mu * radius * STEER_SERVO_MARGIN
+end
 local rgb = Color3.fromRGB
 local DARK = rgb(34, 36, 40)
 local GLASS = rgb(40, 56, 70)
@@ -348,6 +361,9 @@ local function buildWheel(ctx: Ctx, name: string, x: number, z: number, steer: b
 	wheel:SetAttribute("Rear", rear)
 	wheel.Parent = ctx.Model
 	table.insert(ctx.Physical, wheel)
+	local knuckleVolume = knuckle.Size.X * knuckle.Size.Y * knuckle.Size.Z
+	knuckle.CustomPhysicalProperties = PhysicalProperties.new(
+		math.clamp(wheel:GetMass() * KNUCKLE_MASS_RATIO / knuckleVolume, 0.05, 100), 0.3, 0, 1, 1)
 	vis(ctx, "Rim", Vector3.new(d.WheelWidth + 0.06, R * 1.25, R * 1.25), CFrame.new(), CHROME, M.Metal, { Shape = "Cylinder", WeldTo = wheel, Shadow = false })
 
 	-- Süspansiyon kayıcısı + direksiyon servosu
@@ -602,7 +618,7 @@ function VehicleFactory.Build(defId: string, cframe: CFrame, options: { Color: C
 			d.Damping = damping
 			d.FreeLength = (2 + def.Travel / 2) + 0.6 * def.Travel
 		elseif d:IsA("CylindricalConstraint") then
-			d.ServoMaxTorque = total * g * 40
+			d.ServoMaxTorque = steerServoTorque(total, g, n, def.Grip, R)
 		elseif d:IsA("HingeConstraint") then
 			d.MotorMaxTorque = brakeTorque -- park freni
 		end
@@ -653,17 +669,21 @@ function VehicleFactory._tuneCar(model: Model, defId: string, def, derived, chas
 			local mu = p.TireGrip * (if rear then p.GripRear else p.GripFront)
 			d.CustomPhysicalProperties = PhysicalProperties.new(0.9, mu, 0, 100, 1)
 			local knuckle = model:FindFirstChild("Knuckle_" .. d:GetAttribute("Wheel"))
-			local wheelMass = d:GetMass() + (if knuckle then knuckle:GetMass() else 0)
-			unsprung += wheelMass
-			-- Tekerlek + mafsal kendi montajlarıdır: her birine kendi kaldırma kuvveti
-			local a = attachment(d, "AntiGravity", Vector3.zero)
-			local force = Instance.new("VectorForce")
-			force.Name = "AntiGravity"
-			force.Attachment0 = a
-			force.RelativeTo = Enum.ActuatorRelativeTo.World
-			force.ApplyAtCenterOfMass = true
-			force.Force = Vector3.new(0, wheelMass * lift, 0)
-			force.Parent = d
+			-- Tekerlek ve mafsal ayrı montajlardır: her birine KENDİ kütlesi kadar kaldırma kuvveti
+			-- (mafsal artık ağır; kuvvet tekere toplanırsa menteşe üzerinden gereksiz iç kuvvet taşınırdı)
+			for _, part in { d, knuckle } do
+				if part then
+					unsprung += part:GetMass()
+					local a = attachment(part, "AntiGravity", Vector3.zero)
+					local force = Instance.new("VectorForce")
+					force.Name = "AntiGravity"
+					force.Attachment0 = a
+					force.RelativeTo = Enum.ActuatorRelativeTo.World
+					force.ApplyAtCenterOfMass = true
+					force.Force = Vector3.new(0, part:GetMass() * lift, 0)
+					force.Parent = part
+				end
+			end
 		end
 	end
 	local total = sprung + unsprung
@@ -691,7 +711,7 @@ function VehicleFactory._tuneCar(model: Model, defId: string, def, derived, chas
 	local holdTorque = total * C.EffectiveGravity * 0.3 / 4 * R
 	for _, d in model:GetDescendants() do
 		if d:IsA("CylindricalConstraint") then
-			d.ServoMaxTorque = total * G * 40
+			d.ServoMaxTorque = steerServoTorque(total, C.EffectiveGravity, 4, p.TireGrip * math.max(p.GripFront, p.GripRear), R)
 		elseif d:IsA("HingeConstraint") then
 			d.MotorMaxTorque = holdTorque
 		end
