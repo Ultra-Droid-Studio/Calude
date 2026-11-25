@@ -15,6 +15,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local VehicleDefinitions = require(Shared.VehicleDefinitions)
+local CarPhysics = require(script.Parent.Parent:WaitForChild("Vehicles"):WaitForChild("CarPhysics"))
 local RemoteRegistry = require(Shared.RemoteRegistry)
 local Signal = require(Shared.Utilities.Signal)
 local Maid = require(Shared.Utilities.Maid)
@@ -38,6 +39,19 @@ local flipRemote: RemoteEvent
 
 -- Aktif araç durumu
 local current = nil :: any
+
+-- Fizik adımından önce çalışan bağlantı: PreSimulation (dt) yoksa Stepped (time, dt)
+local function connectPreSimulation(fn: (number) -> ()): RBXScriptConnection
+	local ok, signal = pcall(function()
+		return (RunService :: any).PreSimulation
+	end)
+	if ok and signal then
+		return signal:Connect(fn)
+	end
+	return RunService.Stepped:Connect(function(_, dt)
+		fn(dt)
+	end)
+end
 
 local function getControls()
 	if playerControls then
@@ -82,13 +96,31 @@ end
 -- ===== Gamepad analog değerleri =====
 local stickX, triggerR, triggerL = 0, 0, 0
 
+-- Motosiklet (eski fizik): tetikler dijital gibi davranır — Aşama 2 öncesiyle birebir aynı his
 local function readInputs()
+	local input = controllers.InputController
+	local throttle = math.max(if input:IsActionActive("VehGas") then 1 else 0, if triggerR > 0.1 then 1 else 0)
+	local brake = math.max(if input:IsActionActive("VehBrake") then 1 else 0, if triggerL > 0.1 then 1 else 0)
+	local steer = (if input:IsActionActive("VehRight") then 1 else 0) - (if input:IsActionActive("VehLeft") then 1 else 0)
+	if math.abs(stickX) > 0.15 then
+		steer = stickX
+	end
+	return throttle, brake, math.clamp(steer, -1, 1), input:IsActionActive("VehHandbrake"), input:IsActionActive("VehHorn")
+end
+
+-- Otomobil (Aşama 2): tetikler ANALOG; çubuk ölü bölgesi yeniden ölçeklenir ve hafif üstel eğri uygulanır
+-- (merkez çevresinde ince ayar, uçta tam direksiyon).
+local STICK_DEADZONE = 0.12
+local STICK_EXPO = 1.5
+local function readCarInputs()
 	local input = controllers.InputController
 	local throttle = math.max(if input:IsActionActive("VehGas") then 1 else 0, triggerR)
 	local brake = math.max(if input:IsActionActive("VehBrake") then 1 else 0, triggerL)
 	local steer = (if input:IsActionActive("VehRight") then 1 else 0) - (if input:IsActionActive("VehLeft") then 1 else 0)
-	if math.abs(stickX) > 0.15 then
-		steer = stickX
+	local magnitude = math.abs(stickX)
+	if magnitude > STICK_DEADZONE then
+		local scaled = math.clamp((magnitude - STICK_DEADZONE) / (1 - STICK_DEADZONE), 0, 1)
+		steer = math.sign(stickX) * scaled ^ STICK_EXPO
 	end
 	return throttle, brake, math.clamp(steer, -1, 1), input:IsActionActive("VehHandbrake"), input:IsActionActive("VehHorn")
 end
@@ -221,11 +253,50 @@ local function driveStep(dt: number)
 	pushState(false)
 end
 
+-- ===== Otomobil sürüşü (Aşama 2 fizik modeli) =====
+local CAR_INIT_TIMEOUT = 5
+local function carStep(dt: number)
+	local c = current
+	if not c or not c.IsDriver or not c.Chassis.Parent then
+		return
+	end
+	if not c.Car then
+		-- Akış nedeniyle parçalar henüz gelmemiş olabilir: kısa süre tekrar dene
+		c.Car = CarPhysics.new(c.Model, c.Def)
+		if not c.Car then
+			c.CarWait += dt
+			if c.CarWait > CAR_INIT_TIMEOUT and not c.CarWarned then
+				c.CarWarned = true
+				Log.Warn("Otomobil fizik parçaları bulunamadı:", c.Model.Name)
+			end
+			return
+		end
+	end
+	local throttle, brake, steer, handbrake, horn = readCarInputs()
+	local car = c.Car
+	car:Step(dt, throttle, brake, steer, handbrake)
+	if car:ConsumeRecoveryRequest() then
+		flipRemote:FireServer() -- sunucu: durmuş + (devrik veya takılı) ise düzeltir
+	end
+	local t = car.Telemetry
+	c.Speed = t.Speed
+	c.ForwardSpeed = t.ForwardSpeed
+	c.Gear = t.Gear
+	c.Steer = t.Steer
+	c.State.Braking = car:IsBraking()
+	c.State.Reversing = car:IsReversing()
+	c.State.Horn = horn
+	pushState(false)
+end
+
 -- ===== Binme / inme =====
 local function leave()
 	local c = current
 	if not c then
 		return
+	end
+	if c.Car then
+		c.Car:Release() -- yerinde tut, kuvvetleri sıfırla, lastikleri normale döndür (sunucu devralana kadar)
 	end
 	current = nil
 	maid:Clean()
@@ -266,6 +337,7 @@ local function enter(seat: Seat)
 		BrakeTorque = model:GetAttribute("BrakeTorque") or 1e4,
 		CoastTorque = model:GetAttribute("CoastTorque") or 1e3,
 		Steer = 0, Lean = 0, Speed = 0, ForwardSpeed = 0, Gear = "N", FlipTimer = 0, LowGrip = false,
+		UsesCar = VehicleDefinitions.UsesCarPhysics(def), Car = nil, CarWait = 0, CarWarned = false,
 		State = { Lights = model:GetAttribute("Lights") == true, Indicator = "", Braking = false, Reversing = false, Horn = false },
 		LastSent = 0, LastSentKey = "",
 	}
@@ -294,7 +366,12 @@ local function enter(seat: Seat)
 	controllers.MobileControlsController:SetLayout(if not isDriver then "Passenger" elseif isBike then "Motorcycle" else "Car")
 
 	if isDriver then
-		maid:Give(RunService.Heartbeat:Connect(driveStep))
+		if c.UsesCar then
+			-- Fizik adımından ÖNCE hedefleri yaz (bir kare gecikme olmasın)
+			maid:Give(connectPreSimulation(carStep))
+		else
+			maid:Give(RunService.Heartbeat:Connect(driveStep)) -- motosiklet: eski adım, değişmedi
+		end
 		pushState(true)
 	end
 	-- Araç yok olursa (yeniden doğma vb.) güvenle çık
@@ -358,6 +435,16 @@ function VehicleController:Start()
 			triggerR = io.Position.Z
 		elseif io.KeyCode == Enum.KeyCode.ButtonL2 then
 			triggerL = io.Position.Z
+		end
+	end)
+	-- Tetik bırakılınca son analog değer takılı kalmasın (gaz açık kalmasın)
+	UserInputService.InputEnded:Connect(function(io)
+		if io.KeyCode == Enum.KeyCode.ButtonR2 then
+			triggerR = 0
+		elseif io.KeyCode == Enum.KeyCode.ButtonL2 then
+			triggerL = 0
+		elseif io.KeyCode == Enum.KeyCode.Thumbstick1 then
+			stickX = 0
 		end
 	end)
 

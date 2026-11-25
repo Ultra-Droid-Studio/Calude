@@ -56,6 +56,8 @@ local groundParams = RaycastParams.new()
 groundParams.FilterType = Enum.RaycastFilterType.Exclude
 groundParams.RespectCanCollide = true
 
+local isHungUp: (any) -> boolean
+
 -- ===== Yardımcılar =====
 local function getRoot(player: Player): BasePart?
 	local character = player.Character
@@ -356,6 +358,26 @@ local function register(model: Model, defId: string, spot: CFrame?)
 	return record
 end
 
+-- Otomobil takıldı mı? (kaldırım/engel üstünde asılı: en az iki tekerlek yere değmiyor)
+-- Sadece oyuncu isteğinde (oran sınırlı) çağrılır: 4 kısa ışın.
+local hangParams = RaycastParams.new()
+hangParams.FilterType = Enum.RaycastFilterType.Exclude
+hangParams.RespectCanCollide = true
+isHungUp = function(record): boolean
+	local model = record.Model
+	hangParams.FilterDescendantsInstances = excludeList({ model })
+	local grounded = 0
+	for _, part in model:GetChildren() do
+		if part:IsA("BasePart") and part:GetAttribute("Wheel") then
+			local reach = part.Size.Y / 2 + 0.6
+			if workspace:Raycast(part.Position, Vector3.new(0, -reach, 0), hangParams) then
+				grounded += 1
+			end
+		end
+	end
+	return grounded <= 2
+end
+
 -- ===== Genel API =====
 function VehicleService:SpawnVehicle(defId: string, cframe: CFrame, options: any?)
 	local model = VehicleFactory.Build(defId, cframe, options)
@@ -377,9 +399,8 @@ function VehicleService:SpawnAtGround(defId: string, x: number, z: number, yaw: 
 		return nil
 	end
 	local y = groundY(x, z) or 0
-	-- RideHeight Build sonrası attribute; burada tanımdan hesapla
-	local chassisH = if def.Type == "Motorcycle" then 0.9 else 1
-	local ride = chassisH / 2 + def.Clearance + 0.25 * def.Travel
+	-- Sürüş yüksekliği fabrikanın formülünden (tek kaynak; motosiklette eski değer aynen korunur)
+	local ride = VehicleFactory.ComputeRideHeight(def)
 	local cf = CFrame.new(x, y + ride + 0.15, z) * CFrame.Angles(0, math.rad(yaw), 0)
 	local opts = options or {}
 	opts.Spot = cf
@@ -574,8 +595,13 @@ function VehicleService:Start()
 			return
 		end
 		local chassis = record.Chassis
-		if chassis.AssemblyLinearVelocity.Magnitude > 8 or chassis.CFrame.UpVector.Y > 0.6 then
-			return -- sadece ters/yan dönmüş ve durmuş araçlar
+		if chassis.AssemblyLinearVelocity.Magnitude > 8 then
+			return -- sadece durmuş araçlar
+		end
+		-- Ters/yan dönmüş araç VEYA (otomobil) tekerlekleri yere değmeyen, takılı kalmış araç
+		local tipped = chassis.CFrame.UpVector.Y <= 0.6
+		if not tipped and not (VehicleDefinitions.UsesCarPhysics(record.Def) and isHungUp(record)) then
+			return
 		end
 		local look = chassis.CFrame.LookVector
 		local flat = Vector3.new(look.X, 0, look.Z)

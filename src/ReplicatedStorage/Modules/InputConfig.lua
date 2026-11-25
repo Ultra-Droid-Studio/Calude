@@ -30,6 +30,12 @@ InputConfig.Actions = {
 		Gamepad = {},
 		Hold = false,
 	},
+	-- Araç telemetrisi ve test ölçümleri paneli (Aşama 2; geliştirme aracı)
+	ToggleTelemetry = {
+		Keys = { Enum.KeyCode.F4 },
+		Gamepad = {},
+		Hold = false,
+	},
 	-- Oyun içinde ana menüyü aç (Esc Roblox'a ait; gamepad'de Start da Roblox menüsüdür)
 	OpenMenu = {
 		Keys = { Enum.KeyCode.P },
@@ -37,8 +43,10 @@ InputConfig.Actions = {
 		Hold = false,
 	},
 	-- ===== Araç bağlamı (sadece araçtayken bağlanır; yürürken WASD'yi engellemez) =====
-	VehGas = { Context = "Vehicle", Keys = { Enum.KeyCode.W, Enum.KeyCode.Up }, Gamepad = { Enum.KeyCode.ButtonR2 }, Hold = true },
-	VehBrake = { Context = "Vehicle", Keys = { Enum.KeyCode.S, Enum.KeyCode.Down }, Gamepad = { Enum.KeyCode.ButtonL2 }, Hold = true },
+	-- Gamepad tetikleri (R2/L2) burada YOK: VehicleController onları analog okur (Aşama 2).
+	-- Dijital olarak da bağlansalardı yarım basış tam gaz sayılırdı.
+	VehGas = { Context = "Vehicle", Keys = { Enum.KeyCode.W, Enum.KeyCode.Up }, Gamepad = {}, Hold = true },
+	VehBrake = { Context = "Vehicle", Keys = { Enum.KeyCode.S, Enum.KeyCode.Down }, Gamepad = {}, Hold = true },
 	VehLeft = { Context = "Vehicle", Keys = { Enum.KeyCode.A, Enum.KeyCode.Left }, Gamepad = {}, Hold = true },
 	VehRight = { Context = "Vehicle", Keys = { Enum.KeyCode.D, Enum.KeyCode.Right }, Gamepad = {}, Hold = true },
 	VehHandbrake = { Context = "Vehicle", Keys = { Enum.KeyCode.Space }, Gamepad = { Enum.KeyCode.ButtonX }, Hold = true },

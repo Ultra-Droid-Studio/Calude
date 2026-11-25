@@ -14,6 +14,7 @@ local CollectionService = game:GetService("CollectionService")
 local HttpService = game:GetService("HttpService")
 
 local VehicleDefinitions = require(ReplicatedStorage.Shared.VehicleDefinitions)
+local VehiclePhysics = require(ReplicatedStorage.Shared.VehiclePhysics)
 local AudioConfig = require(ReplicatedStorage.Modules.AudioConfig)
 
 local VehicleFactory = {}
@@ -33,6 +34,7 @@ local AMBER = rgb(255, 150, 30)
 type Ctx = {
 	Model: Model, Chassis: Part, Def: any, Color: Color3, Rng: Random,
 	yW: number, yTop: number, Physical: { BasePart },
+	Derived: any?, -- Aşama 2 otomobil fizik modeli (motosiklette nil → eski geometri)
 }
 
 local function attachment(parent: Instance, name: string, position: Vector3, axis: Vector3?, secondary: Vector3?): Attachment
@@ -314,6 +316,9 @@ local function buildWheel(ctx: Ctx, name: string, x: number, z: number, steer: b
 	local chassis = ctx.Chassis
 	local R, travel = d.WheelRadius, d.Travel
 	local center = Vector3.new(x, ctx.yW, z)
+	-- Kayıcının üst sınırı sürüş konumunun ne kadar üstünde: otomobilde BumpRoom (kursun %60'ı yukarıda,
+	-- tümsekler için), motosiklette eskisi gibi kursun yarısı.
+	local strutTop = if ctx.Derived then ctx.Derived.BumpRoom else travel / 2
 
 	local knuckle = Instance.new("Part")
 	knuckle.Name = "Knuckle_" .. name
@@ -346,7 +351,7 @@ local function buildWheel(ctx: Ctx, name: string, x: number, z: number, steer: b
 	vis(ctx, "Rim", Vector3.new(d.WheelWidth + 0.06, R * 1.25, R * 1.25), CFrame.new(), CHROME, M.Metal, { Shape = "Cylinder", WeldTo = wheel, Shadow = false })
 
 	-- Süspansiyon kayıcısı + direksiyon servosu
-	local strutA = attachment(chassis, "Strut_" .. name, center + Vector3.new(0, travel / 2, 0), Vector3.new(0, 1, 0), Vector3.new(0, 0, -1))
+	local strutA = attachment(chassis, "Strut_" .. name, center + Vector3.new(0, strutTop, 0), Vector3.new(0, 1, 0), Vector3.new(0, 0, -1))
 	local strutK = attachment(knuckle, "Strut", Vector3.zero, Vector3.new(0, 1, 0), Vector3.new(0, 0, -1))
 	local cyl = Instance.new("CylindricalConstraint")
 	cyl.Name = "Suspension_" .. name
@@ -361,15 +366,17 @@ local function buildWheel(ctx: Ctx, name: string, x: number, z: number, steer: b
 	cyl.TargetAngle = 0
 	cyl:SetAttribute("Wheel", name)
 	cyl:SetAttribute("Steer", steer)
+	cyl:SetAttribute("Rear", rear)
 	cyl.Parent = knuckle
 
 	-- Yay + amortisör (sertlik kütle hesabından sonra ayarlanır)
-	local springTop = attachment(chassis, "SpringTop_" .. name, center + Vector3.new(0, travel / 2 + 2, 0))
+	local springTop = attachment(chassis, "SpringTop_" .. name, center + Vector3.new(0, strutTop + 2, 0))
 	local spring = Instance.new("SpringConstraint")
 	spring.Name = "Spring_" .. name
 	spring.Attachment0 = springTop
 	spring.Attachment1 = strutK
 	spring.Visible = false
+	spring:SetAttribute("Rear", rear)
 	spring.Parent = knuckle
 
 	-- Tahrik/fren motoru
@@ -421,9 +428,37 @@ function VehicleFactory.Build(defId: string, cframe: CFrame, options: { Color: C
 	chassis.CanTouch = false
 	chassis.CollisionGroup = VehicleFactory.BodyGroup
 	local volume = chassisSize.X * chassisSize.Y * chassisSize.Z
-	chassis.CustomPhysicalProperties = PhysicalProperties.new(math.clamp(def.Mass / volume, 0.05, 100), 0.3, 0, 1, 1)
+	local carPhysics = VehicleDefinitions.UsesCarPhysics(def)
+	local derived = if carPhysics then VehiclePhysics.Derive(def) else nil
+	-- Otomobilde kütlenin BallastFraction kadarı balast parçasına gider (ağırlık dağılımı / ağırlık merkezi)
+	local chassisMass = if carPhysics then def.Mass * (1 - VehiclePhysics.Constants.BallastFraction) else def.Mass
+	chassis.CustomPhysicalProperties = PhysicalProperties.new(math.clamp(chassisMass / volume, 0.05, 100), 0.3, 0, 1, 1)
 	chassis.Parent = model
 	model.PrimaryPart = chassis
+
+	local ballast: Part? = nil
+	if carPhysics and derived then
+		chassis.RootPriority = 10 -- montajın kökü şasi kalsın (balast ağır ama küçük)
+		local b = Instance.new("Part")
+		b.Name = "Ballast"
+		b.Size = Vector3.new(math.max(chassisSize.X * 0.5, 1), 0.4, 1.2)
+		local ballastVolume = b.Size.X * b.Size.Y * b.Size.Z
+		b.CustomPhysicalProperties = PhysicalProperties.new(
+			math.clamp(def.Mass * VehiclePhysics.Constants.BallastFraction / ballastVolume, 0.05, 100), 0.3, 0, 1, 1)
+		-- Şasi tabanında, ağırlık dağılımı için Z'de kaydırılmış; CoGOffset ile yükseltilir
+		b.CFrame = cframe * CFrame.new(0, -chassisSize.Y / 2 + 0.2 + def.Physics.CoGOffset, derived.BallastZ)
+		b.Transparency = 1
+		b.CanCollide = false
+		b.CanQuery = false
+		b.CanTouch = false
+		b.CollisionGroup = VehicleFactory.BodyGroup
+		b.Parent = model
+		local weld = Instance.new("WeldConstraint")
+		weld.Part0 = chassis
+		weld.Part1 = b
+		weld.Parent = b
+		ballast = b
+	end
 
 	local ctx: Ctx = {
 		Model = model, Chassis = chassis, Def = def,
@@ -432,6 +467,7 @@ function VehicleFactory.Build(defId: string, cframe: CFrame, options: { Color: C
 		yW = -(chassisSize.Y / 2 + def.Clearance) + def.WheelRadius,
 		yTop = 0,
 		Physical = { chassis },
+		Derived = derived,
 	}
 
 	-- Tekerlekler
@@ -535,6 +571,11 @@ function VehicleFactory.Build(defId: string, cframe: CFrame, options: { Color: C
 	end
 
 	-- ===== Kütleye bağlı ayarlar =====
+	if carPhysics and derived and ballast then
+		VehicleFactory._tuneCar(model, defId, def, derived, chassis, ballast, ctx, align)
+		CollectionService:AddTag(model, "Vehicle")
+		return model
+	end
 	local sprung = chassis:GetMass()
 	local total = 0
 	for _, p in ctx.Physical do
@@ -587,6 +628,104 @@ function VehicleFactory.Build(defId: string, cframe: CFrame, options: { Color: C
 	end
 	CollectionService:AddTag(model, "Vehicle")
 	return model
+end
+
+-- ===== Aşama 2: otomobil fizik modeli kurulumu =====
+-- Yaylar ve sönüm aks başına yaylı kütleden; kaldırma kuvvetleri EffectiveGravity'den hesaplanır.
+-- İstemcideki CarPhysics her karede sadece motor/fren/direksiyon/aero değerlerini yazar.
+function VehicleFactory._tuneCar(model: Model, defId: string, def, derived, chassis: BasePart, ballast: BasePart, ctx: Ctx, align: AlignOrientation)
+	local C = VehiclePhysics.Constants
+	local p = def.Physics
+	local G = workspace.Gravity
+	local lift = G - C.EffectiveGravity -- araca uygulanan yerçekimi farkı (yukarı)
+	local sprung = chassis:GetMass() + ballast:GetMass()
+	local unsprung = 0
+
+	for _, d in model:GetDescendants() do
+		if d:IsA("SpringConstraint") then
+			local rear = d:GetAttribute("Rear") == true
+			d.Stiffness = sprung * (if rear then derived.StiffnessPerMassRear else derived.StiffnessPerMassFront)
+			d.Damping = sprung * (if rear then derived.DampingPerMassRear else derived.DampingPerMassFront)
+			-- Sürüş konumunda yay boyu = BumpRoom + 2; statik çökme kadar sıkışmış olmalı
+			d.FreeLength = derived.BumpRoom + 2 + (if rear then derived.SagRear else derived.SagFront)
+		elseif d:IsA("BasePart") and d:GetAttribute("Wheel") then
+			local rear = d:GetAttribute("Rear") == true
+			local mu = p.TireGrip * (if rear then p.GripRear else p.GripFront)
+			d.CustomPhysicalProperties = PhysicalProperties.new(0.9, mu, 0, 100, 1)
+			local knuckle = model:FindFirstChild("Knuckle_" .. d:GetAttribute("Wheel"))
+			local wheelMass = d:GetMass() + (if knuckle then knuckle:GetMass() else 0)
+			unsprung += wheelMass
+			-- Tekerlek + mafsal kendi montajlarıdır: her birine kendi kaldırma kuvveti
+			local a = attachment(d, "AntiGravity", Vector3.zero)
+			local force = Instance.new("VectorForce")
+			force.Name = "AntiGravity"
+			force.Attachment0 = a
+			force.RelativeTo = Enum.ActuatorRelativeTo.World
+			force.ApplyAtCenterOfMass = true
+			force.Force = Vector3.new(0, wheelMass * lift, 0)
+			force.Parent = d
+		end
+	end
+	local total = sprung + unsprung
+
+	-- Şasi kuvvetleri: kaldırma (sabit, sunucuda) + aero/yuvarlanma (istemci her karede ekler)
+	local core = attachment(chassis, "Core", Vector3.zero)
+	local forces = Instance.new("VectorForce")
+	forces.Name = "Forces"
+	forces.Attachment0 = core
+	forces.RelativeTo = Enum.ActuatorRelativeTo.World
+	forces.ApplyAtCenterOfMass = true
+	forces.Force = Vector3.new(0, sprung * lift, 0)
+	forces.Parent = chassis
+	forces:SetAttribute("BaseLift", sprung * lift)
+	-- Savrulma denge yardımı (istemci yazar; sunucuda sıfır)
+	local stability = Instance.new("Torque")
+	stability.Name = "Stability"
+	stability.Attachment0 = core
+	stability.RelativeTo = Enum.ActuatorRelativeTo.World
+	stability.Torque = Vector3.zero
+	stability.Parent = chassis
+
+	-- Park freni / yerinde tutma: %12 eğimde güvenle durduracak tork (sürtünme sınırını aşmaz)
+	local R = def.WheelRadius
+	local holdTorque = total * C.EffectiveGravity * 0.3 / 4 * R
+	for _, d in model:GetDescendants() do
+		if d:IsA("CylindricalConstraint") then
+			d.ServoMaxTorque = total * G * 40
+		elseif d:IsA("HingeConstraint") then
+			d.MotorMaxTorque = holdTorque
+		end
+	end
+	-- Havada dengeleme (istemci açar; yerdeyken kapalı)
+	align.MaxTorque = total * C.EffectiveGravity * 30
+	align.Responsiveness = 6
+
+	model:SetAttribute("VehicleId", newVehicleId())
+	model:SetAttribute("DefId", defId)
+	model:SetAttribute("VehicleType", def.Type)
+	model:SetAttribute("PhysicsModel", "Car2")
+	model:SetAttribute("SprungMass", sprung)
+	model:SetAttribute("TotalMass", total)
+	model:SetAttribute("BrakeTorque", holdTorque) -- sunucu park freni bunu kullanır
+	model:SetAttribute("DriveTorque", 0)
+	model:SetAttribute("CoastTorque", 0)
+	model:SetAttribute("Lights", false)
+	model:SetAttribute("Indicator", "")
+	model:SetAttribute("Braking", false)
+	model:SetAttribute("Reversing", false)
+	model:SetAttribute("RideHeight", VehiclePhysics.CarRideHeight(def))
+	for _, part in ctx.Physical do
+		part:SetAttribute("Physical", true)
+	end
+end
+
+-- Doğurma yüksekliği (şasi merkezi ↔ zemin). Otomobil yeni modelde; motosiklet eski formülde.
+function VehicleFactory.ComputeRideHeight(def): number
+	if VehicleDefinitions.UsesCarPhysics(def) then
+		return VehiclePhysics.CarRideHeight(def)
+	end
+	local chassisH = if def.Type == "Motorcycle" then 0.9 else 1
+	return chassisH / 2 + def.Clearance + 0.25 * def.Travel
 end
 
 -- Uzak/park araçlarda fizik maliyetini sıfırlamak için (Bölüm 27.2)
