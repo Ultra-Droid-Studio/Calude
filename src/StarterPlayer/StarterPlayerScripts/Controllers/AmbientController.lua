@@ -423,6 +423,8 @@ local function simStep()
 end
 
 local function render(dt: number, alpha: number)
+	local camera = Workspace.CurrentCamera
+	local camPos = camera and camera.CFrame.Position or Vector3.zero
 	for v, model in vehicleModels do
 		local root = model.PrimaryPart
 		if root then
@@ -437,10 +439,12 @@ local function render(dt: number, alpha: number)
 			local pos = Vector3.new(x, y, z)
 			root.CFrame = CFrame.lookAt(pos, pos + Vector3.new(hx, v.Slope or 0, hz))
 			TrafficRenderer.SetBrake(model, v.Brake)
+			local dx, dz = x - camPos.X, z - camPos.Z
+			if dx * dx + dz * dz < 14400 then
+				TrafficRenderer.Spin(model, v.V, dt) -- yakındaki dış modelli araçlarda teker dönüşü
+			end
 		end
 	end
-	local camera = Workspace.CurrentCamera
-	local camPos = camera and camera.CFrame.Position or Vector3.zero
 	local animR2 = PCFG.AnimateRadius * PCFG.AnimateRadius
 	for p, model in pedModels do
 		local x = p.PX + (p.X - p.PX) * alpha

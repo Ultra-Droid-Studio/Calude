@@ -15,6 +15,7 @@ local HttpService = game:GetService("HttpService")
 
 local VehicleDefinitions = require(ReplicatedStorage.Shared.VehicleDefinitions)
 local VehiclePhysics = require(ReplicatedStorage.Shared.VehiclePhysics)
+local CarModelKit = require(ReplicatedStorage.Shared.CarModelKit)
 local AudioConfig = require(ReplicatedStorage.Modules.AudioConfig)
 
 local VehicleFactory = {}
@@ -48,6 +49,7 @@ type Ctx = {
 	Model: Model, Chassis: Part, Def: any, Color: Color3, Rng: Random,
 	yW: number, yTop: number, Physical: { BasePart },
 	Derived: any?, -- Aşama 2 otomobil fizik modeli (motosiklette nil → eski geometri)
+	SeatDrop: number?, -- dış 3D modelde koltuk/direksiyon ne kadar alçaltıldı (başın tavandan çıkmaması için)
 }
 
 local function attachment(parent: Instance, name: string, position: Vector3, axis: Vector3?, secondary: Vector3?): Attachment
@@ -413,6 +415,49 @@ local function buildWheel(ctx: Ctx, name: string, x: number, z: number, steer: b
 	return knuckle, wheel, cyl, spring, hinge
 end
 
+-- ===================== DIŞ 3D MODEL (CarModelConfig) =====================
+-- Sadece görünüm: fizik parçaları (şasi, balast, mafsallar, fizik tekerleri), çarpışma kabuğu (Body/Cabin) ve ışık
+-- kaynakları aynen kalır, görünmez olur. Model fizikteki dingil mesafesine ölçeklenir; görünür tekerlekler modelin kendi
+-- oranındadır ve yere değecek kadar alçakta durur (fizik tekerleği modelinkinden büyük). Teker görselleri mafsala
+-- Motor6D ile bağlıdır: direksiyon ve süspansiyonla hareket eder, dönüşü istemci oynatır (VehicleVisualsController).
+local function dressWithModel(ctx: Ctx, name: string): boolean
+	local info = CarModelKit.Get(name)
+	if not info then
+		return false
+	end
+	local d, model, chassis = ctx.Def, ctx.Model, ctx.Chassis
+	local physical = {}
+	for _, p in ctx.Physical do
+		physical[p] = true
+	end
+	for _, p in model:GetChildren() do
+		if p:IsA("BasePart") and not p:IsA("Seat") and p ~= chassis and p.Name ~= "Ballast" and not physical[p] then
+			p.Transparency = 1 -- eski kutu görseller: çarpışma kabuğu ve ışık kaynağı olarak kalır, görünmez
+			p.CastShadow = false
+		end
+	end
+	chassis.Transparency = 1
+	local knuckles = {}
+	for _, w in { "FL", "FR", "RL", "RR" } do
+		local wheel = model:FindFirstChild("Wheel_" .. w)
+		if wheel and wheel:IsA("BasePart") then
+			wheel.Transparency = 1
+			wheel.CastShadow = false
+		end
+		knuckles[w] = model:FindFirstChild("Knuckle_" .. w)
+	end
+	local s = d.Wheelbase / info.Wheelbase
+	local visualRadius = info.WheelRadius * s
+	local drop = math.max(d.WheelRadius - visualRadius, 0)
+	local frame = chassis.CFrame * CFrame.new(0, ctx.yW - drop, 0)
+	CarModelKit.Build(info, { Frame = frame, Scale = s, Parent = model, Body = chassis, Wheels = knuckles, Paint = ctx.Color })
+	-- Koltuk: oturan karakterin başı (~3.4 stud) tavanın altında kalsın
+	local roof = ctx.yW - drop + info.RoofY * s
+	ctx.SeatDrop = math.max((ctx.yTop - 1.0) - (roof - 3.4), 0)
+	model:SetAttribute("BodyModel", name)
+	return true
+end
+
 -- ===================== İNŞA =====================
 local function newVehicleId(): string
 	return string.sub(HttpService:GenerateGUID(false), 1, 8)
@@ -504,10 +549,14 @@ function VehicleFactory.Build(defId: string, cframe: CFrame, options: { Color: C
 		buildWheel(ctx, "RR", hx, hz, false, rearDriven, true)
 		local styleFn = CarStyles[def.Style] or CarStyles.sedan
 		styleFn(ctx)
+		local bodyModel = CarModelKit.Pick(defId, rng, false)
+		if bodyModel then
+			dressWithModel(ctx, bodyModel)
+		end
 		wheels = { "FL", "FR", "RL", "RR" }
 		-- direksiyon simidi + IK el hedefleri
 		local driver = def.Seats[1]
-		local wheelPos = Vector3.new(driver.X, ctx.yTop + 0.25, driver.Z - 1.9)
+		local wheelPos = Vector3.new(driver.X, ctx.yTop + 0.25 - (ctx.SeatDrop or 0), driver.Z - 1.9)
 		vis(ctx, "SteeringWheel", Vector3.new(0.15, 1.5, 1.5), cylCF(wheelPos.X, wheelPos.Y, wheelPos.Z, "Z") * CFrame.Angles(0, 0, math.rad(-25)), DARK, M.SmoothPlastic, { Shape = "Cylinder", Shadow = false })
 		attachment(chassis, "HandL", wheelPos + Vector3.new(-0.62, 0, 0))
 		attachment(chassis, "HandR", wheelPos + Vector3.new(0.62, 0, 0))
@@ -518,7 +567,7 @@ function VehicleFactory.Build(defId: string, cframe: CFrame, options: { Color: C
 		local seat = Instance.new("Seat")
 		seat.Name = if s.Driver then "DriverSeat" else "PassengerSeat" .. index
 		seat.Size = if isBike then Vector3.new(1.1, 0.4, 1.8) else Vector3.new(1.8, 0.4, 1.8)
-		local seatY = if isBike then ctx.yW + 1.55 else ctx.yTop - 1.0
+		local seatY = if isBike then ctx.yW + 1.55 else ctx.yTop - 1.0 - (ctx.SeatDrop or 0)
 		seat.CFrame = chassis.CFrame * CFrame.new(s.X, seatY, s.Z)
 		seat.Color = DARK
 		seat.Material = if isBike then M.Leather else M.Fabric

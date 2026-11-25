@@ -9,6 +9,7 @@ local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local VehicleDefinitions = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("VehicleDefinitions"))
+local CarModelKit = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("CarModelKit"))
 
 local TrafficRenderer = {}
 
@@ -105,9 +106,67 @@ local function build(defId: string): Model
 	return model
 end
 
+-- Dış 3D model (CarModelConfig; ör. Quaternius CC0 paketi): ReplicatedStorage.VehicleModels'ta varsa kullanılır.
+-- Ölçek: tanımın dingil mesafesi; kök yol yüzeyinde, teker merkezleri yerden teker yarıçapı kadar yukarıda.
+local meshData: { [Model]: { Name: string, Parts: { BasePart }, Spin: { any }, Radius: number, Angle: number } } = {}
+
+local function buildMesh(defId: string, name: string): Model?
+	local info = CarModelKit.Get(name)
+	if not info then
+		return nil
+	end
+	local def = VehicleDefinitions.Get(defId)
+	local s = def.Wheelbase / info.Wheelbase
+	local radius = info.WheelRadius * s
+	local model = Instance.new("Model")
+	model.Name = "NPC_" .. name
+	local root = Instance.new("Part")
+	root.Name = "Root"
+	root.Size = Vector3.new(info.Width * s, 0.2, info.Length * s)
+	root.Transparency = 1
+	root.Anchored = true
+	root.CanCollide = false
+	root.CanQuery = false
+	root.CanTouch = false
+	root.CFrame = CFrame.new(0, -500, 0)
+	root.Parent = model
+	model.PrimaryPart = root
+	-- tek kutu çarpışma gövdesi (oyuncunun aracı çarpar; görsel meshler çarpışmaz → ucuz ve kararlı)
+	local height = math.max(radius + info.RoofY * s - 0.4, 2)
+	local hull = Instance.new("Part")
+	hull.Name = "Hull"
+	hull.Size = Vector3.new(info.Width * s * 0.95, height, info.Length * s * 0.95)
+	hull.CFrame = root.CFrame * CFrame.new(0, 0.4 + height / 2, 0)
+	hull.Transparency = 1
+	hull.Anchored = false
+	hull.CanCollide = true
+	hull.CanQuery = false
+	hull.CanTouch = false
+	hull.Massless = false
+	hull.CustomPhysicalProperties = PhysicalProperties.new(math.clamp(def.Mass / (hull.Size.X * hull.Size.Y * hull.Size.Z), 0.05, 10), 0.4, 0.1)
+	local weld = Instance.new("WeldConstraint")
+	weld.Part0 = root
+	weld.Part1 = hull
+	weld.Parent = hull
+	hull.Parent = model
+	local result = CarModelKit.Build(info, {
+		Frame = root.CFrame * CFrame.new(0, radius, 0), Scale = s, Parent = model, Body = root, Shadows = true,
+	})
+	meshData[model] = { Name = name, Parts = result.Parts, Spin = result.Spin, Radius = radius, Angle = 0 }
+	model:SetAttribute("DefId", defId)
+	model:SetAttribute("Brake", false)
+	model:SetAttribute("Lights", false)
+	return model
+end
+
 local function paint(model: Model)
 	local def = VehicleDefinitions.Get(model:GetAttribute("DefId"))
 	local color = def.Colors[rng:NextInteger(1, #def.Colors)]
+	local mesh = meshData[model]
+	if mesh then
+		CarModelKit.Repaint(mesh.Parts, mesh.Name, color)
+		return
+	end
 	for _, name in { "Body", "Roof" } do
 		local p = model:FindFirstChild(name) :: BasePart?
 		if p then
@@ -122,8 +181,8 @@ function TrafficRenderer.SetBrake(model: Model, on: boolean)
 	end
 	model:SetAttribute("Brake", on)
 	for _, p in model:GetChildren() do
-		if p.Name == "Tail" and p:IsA("BasePart") then
-			p.Color = if on then TAIL_ON else TAIL_OFF
+		if (p.Name == "Tail" or p.Name == "TailLight") and p:IsA("BasePart") then
+			p.Color = if on then TAIL_ON else (p:GetAttribute("OffColor") or TAIL_OFF)
 			p.Material = if on or model:GetAttribute("Lights") then Enum.Material.Neon else Enum.Material.SmoothPlastic
 		end
 	end
@@ -135,21 +194,41 @@ function TrafficRenderer.SetLights(model: Model, on: boolean)
 	end
 	model:SetAttribute("Lights", on)
 	for _, p in model:GetChildren() do
-		if p:IsA("BasePart") and (p.Name == "Head" or p.Name == "Tail") then
-			if p.Name == "Head" then
-				p.Color = if on then HEAD_ON else HEAD_OFF
+		if p:IsA("BasePart") then
+			local head = p.Name == "Head" or p.Name == "Headlight"
+			local tail = p.Name == "Tail" or p.Name == "TailLight"
+			if head then
+				p.Color = if on then HEAD_ON else (p:GetAttribute("OffColor") or HEAD_OFF)
 			end
-			p.Material = if on or (p.Name == "Tail" and model:GetAttribute("Brake")) then Enum.Material.Neon else Enum.Material.SmoothPlastic
+			if head or tail then
+				p.Material = if on or (tail and model:GetAttribute("Brake")) then Enum.Material.Neon else Enum.Material.SmoothPlastic
+			end
 		end
+	end
+end
+
+-- Görünür tekerleri döndür (dış modelli araçlar). speed: stud/sn (ileri +)
+function TrafficRenderer.Spin(model: Model, speed: number, dt: number)
+	local mesh = meshData[model]
+	if not mesh or #mesh.Spin == 0 then
+		return
+	end
+	mesh.Angle = (mesh.Angle - speed / mesh.Radius * dt) % (math.pi * 2)
+	local t = CFrame.Angles(mesh.Angle, 0, 0)
+	for _, s in mesh.Spin do
+		s.Motor.Transform = t
 	end
 end
 
 -- Havuzdan al (yoksa üret), boya, sahneye koy
 function TrafficRenderer.Acquire(defId: string, lightsOn: boolean): Model
-	local pool = pools[defId]
+	local bodyName = CarModelKit.Pick(defId, rng, true)
+	local key = defId .. "|" .. (bodyName or "box")
+	local pool = pools[key]
 	local model = pool and table.remove(pool)
 	if not model then
-		model = build(defId)
+		model = (bodyName and buildMesh(defId, bodyName)) or build(defId)
+		model:SetAttribute("PoolKey", key)
 	end
 	paint(model)
 	TrafficRenderer.SetBrake(model, false)
@@ -168,9 +247,9 @@ function TrafficRenderer.Release(model: Model)
 		root.CFrame = CFrame.new(0, -500, 0)
 	end
 	model.Parent = nil
-	local defId = model:GetAttribute("DefId")
-	pools[defId] = pools[defId] or {}
-	table.insert(pools[defId], model)
+	local key = model:GetAttribute("PoolKey") or model:GetAttribute("DefId")
+	pools[key] = pools[key] or {}
+	table.insert(pools[key], model)
 end
 
 -- Kaza: model fizik nesnesine döner (bu istemcide simüle edilir), sonra havuza döner
