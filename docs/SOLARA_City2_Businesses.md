@@ -44,7 +44,15 @@ diğer işletmelerden en uzak arsayı tercih eder (yayılım). İsimler ve marka
   POI kimliği/giriş noktası kuralı, giriş noktası yolda değil, **28 yeni işletmenin 28'inin de kaldırıma ulaşan
   doğrulanmış kapısı var**. PASS. (Bilgi: önceden var olan 3 kırsal POI'nin kaldırımsız yolda kapısı yok; değişmedi.)
 * `tools/test_navigation.py` — 14 doğma noktasından 118 yerin hepsine rota (1652 rota) PASS.
-* `tools/test_ambient.py` — trafik/yaya/kapı testleri yeni POI'lerle (yeni yaya bekleme noktaları): sonuç rapora eklenir.
+* `tools/test_ambient.py` (trafik/yaya/kapı, yeni POI'lerle: yaya bekleme noktası 63 → 91): ilk tam çalıştırmada 2 hata
+  (merkezde 2 yaya çarpması, hareketli oyuncu senaryosunda 7 araç çakışması); diğer her şey PASS (kapılar 1278, yolda
+  yaya 0, kırmızıda geçiş 0). İnceleme — **iki hata da işletmelerden bağımsız, önceden var olan nadir trafik hataları**:
+  * Simülasyon aynı tohumla bile çalıştırmadan çalıştırmaya farklı sonuç veriyor (aynı senaryo bir kez 2, bir kez 0 çarpma).
+  * Araç çakışması işletmeler KAPALIYKEN de oluyor (6 tohumdan 1'inde, 5 çakışma); işletmeler açıkken görülen yer
+    Costa Verano giriş rampasının otoyola (Solara Loop) bağlandığı nokta — yükseltilmiş otoyol, yaya ve işletme yok:
+    yol veren rampa aracı geç duruyor, otoyoldaki araç içinden geçiyor.
+  * Yaya çarpması: 10 dakikalık 4 tohumda işletmeler açıkken 0, KAPALIYKEN 1 tohumda 2 (yaya geçidinde, karşıya geçerken).
+  Trafik/NPC sistemine bu aşamada dokunulmadı (korunacak sistem); bu iki hata ayrı bir düzeltme işi olarak önerildi.
 * Lint: önceki durumla aynı (1 hata + 4 uyarı, eski dosyalarda).
 
 ## Studio'da bakılacaklar
