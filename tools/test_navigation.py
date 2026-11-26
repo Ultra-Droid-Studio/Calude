@@ -34,6 +34,13 @@ for l in lines:
         spawns.append((f[1], float(f[2]), float(f[3])))
     elif f[0] == "D":
         districts.append((f[1], float(f[4]), float(f[5]), float(f[6]), float(f[7])))
+# City expansion stage 2: new businesses are POIs in the game too (MapDefinitions -> Businesses.Apply)
+sys.path.insert(0, "tools")
+import ambient_data  # noqa: E402
+_known = {pid for pid, _, _ in pois}
+for _p in ambient_data.load(LuaRuntime(unpack_returned_tuples=True))[0].POIs.values():
+    if _p.Id not in _known:
+        pois.append((_p.Id, _p.Entrance.X, _p.Entrance.Z))
 
 def build(nodes, edges):
     lnodes = lua.table_from({k: lua.table_from({"Position": P(*v)}) for k, v in nodes.items()})

@@ -51,11 +51,15 @@ local POI_CATEGORY = {
 	airport = "Transport", airport_tower = "Transport", port = "Transport",
 	lighthouse = "Landmark", observatory = "Landmark", construction = "Landmark",
 	farm = "Rural", ranger = "Rural",
+	-- Şehir genişletme (aşama 2) işletme türleri
+	bakery = "Food", diner = "Food", bakkal = "Shop", minimarket = "Shop", greengrocer = "Shop", dollarstore = "Shop",
+	pharmacy = "Health", internetcafe = "Leisure", gunshop = "Armory",
 }
 local CATEGORY_COLOR = {
 	Shop = rgb(110, 210, 150), Food = rgb(242, 120, 160), Fuel = rgb(255, 170, 60), Health = rgb(235, 87, 87),
 	Police = rgb(90, 150, 255), Hotel = rgb(180, 140, 255), Vehicle = rgb(64, 196, 214), Leisure = rgb(255, 214, 110),
 	Transport = rgb(200, 200, 210), Landmark = rgb(255, 122, 69), Rural = rgb(150, 190, 110),
+	Armory = rgb(170, 150, 120),
 }
 MapCanvas.POICategory = POI_CATEGORY
 MapCanvas.CategoryColor = CATEGORY_COLOR

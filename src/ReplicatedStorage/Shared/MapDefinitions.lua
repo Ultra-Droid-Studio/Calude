@@ -3,6 +3,7 @@
 -- Veri tools/mapgen.py tarafından üretilen MapData'dan bir kez ayrıştırılır ve önbelleğe alınır.
 
 local MapData = require(script.Parent.MapData)
+local Businesses = require(script.Parent.Businesses)
 
 local MapDefinitions = {}
 
@@ -26,10 +27,12 @@ export type Lot = {
 	Id: number, District: string, Style: string, Use: string,
 	Center: Vector3, Width: number, Depth: number, Rotation: number, Height: number,
 	Seed: number, PoiId: string?, BaseY: number,
+	Business: any?, -- Businesses kaydı (varsa)
 }
 export type POI = {
 	Id: string, Type: string, Name: string, Position: Vector3, Entrance: Vector3,
 	District: string, LotId: number,
+	Business: any?, -- Businesses kaydı (işletmeyse)
 }
 
 local parsed = nil
@@ -150,6 +153,8 @@ local function parse()
 			table.insert(b.Edges, e.Id)
 		end
 	end
+	-- İşletmeler (Şehir genişletme aşama 2): arsalara işletme kaydı, yeni işletmeler POI olarak (harita, GPS)
+	Businesses.Apply(data, Vector3.new)
 	return data
 end
 
@@ -288,10 +293,16 @@ function MapDefinitions.GetVehicleSpots()
 	return get().VehicleSpots
 end
 
--- Dükkân tipleri (Aşama 7 ShopService bunları kullanacak)
-MapDefinitions.ShopTypes = table.freeze({
+-- Dükkân tipleri (Aşama 7 ShopService bunları kullanacak). Şehir genişletme: işletme türleri de dükkândır.
+local shopTypes = {
 	supermarket = true, convenience = true, grocery = true, restaurant = true,
 	fastfood = true, cafe = true, gas = true, general = true,
-})
+}
+for id, t in Businesses.Types do
+	if t.Shop then
+		shopTypes[id] = true
+	end
+end
+MapDefinitions.ShopTypes = table.freeze(shopTypes)
 
 return MapDefinitions

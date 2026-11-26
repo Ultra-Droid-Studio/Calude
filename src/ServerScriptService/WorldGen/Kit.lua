@@ -81,7 +81,8 @@ function Kit.Wedge(self: Kit, parent: Instance, size: Vector3, cframe: CFrame, c
 end
 
 -- Bir parçanın yüzüne yazı (tabela). Metin çok uzunsa otomatik küçülür.
-function Kit.Label(self: Kit, part: BasePart, face: Enum.NormalId, text: string, textColor: Color3?, glow: boolean?)
+-- font: isteğe bağlı Enum.Font adı (işletme kimliği, ör. "Bangers"); geçersizse varsayılan yazı tipi
+function Kit.Label(self: Kit, part: BasePart, face: Enum.NormalId, text: string, textColor: Color3?, glow: boolean?, font: string?)
 	local gui = Instance.new("SurfaceGui")
 	gui.Face = face
 	gui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
@@ -94,7 +95,14 @@ function Kit.Label(self: Kit, part: BasePart, face: Enum.NormalId, text: string,
 	label.Text = text
 	label.TextScaled = true
 	label.TextColor3 = textColor or Color3.new(1, 1, 1)
-	label.FontFace = Font.new("rbxasset://fonts/families/GothamSSm.json", Enum.FontWeight.Heavy)
+	local face: Font? = nil
+	if font then
+		local ok, result = pcall(function()
+			return Font.fromEnum((Enum.Font :: any)[font])
+		end)
+		face = if ok then result else nil
+	end
+	label.FontFace = face or Font.new("rbxasset://fonts/families/GothamSSm.json", Enum.FontWeight.Heavy)
 	local pad = Instance.new("UIPadding")
 	pad.PaddingTop = UDim.new(0.12, 0)
 	pad.PaddingBottom = UDim.new(0.12, 0)

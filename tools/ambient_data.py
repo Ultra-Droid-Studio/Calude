@@ -8,7 +8,7 @@ Pass correct_sidewalks=False to reproduce that old data (used to check that no p
 """
 
 
-def load(lua, path="src/ReplicatedStorage/Shared/MapData.lua", correct_sidewalks=True):
+def load(lua, path="src/ReplicatedStorage/Shared/MapData.lua", correct_sidewalks=True, businesses=True):
     lines = open(path, encoding="utf-8").read().split("\n")
     T = lua.table_from
 
@@ -71,4 +71,17 @@ def load(lua, path="src/ReplicatedStorage/Shared/MapData.lua", correct_sidewalks
         "POIs": T([T(p) for p in pois]), "Props": T([T(p) for p in props]),
         "Districts": T([T(d) for d in districts]), "Lots": T([T(l) for l in lots]),
     })
+    if businesses:
+        # Same as the game (MapDefinitions.parse): business registry on lots, new businesses as POIs
+        apply_businesses(lua, data)
     return data, dict(nodes=nodes, edges=edges, meta=meta, pois=pois, props=props, districts=districts, lots=lots)
+
+
+def apply_businesses(lua, data, root="src/ReplicatedStorage/Shared"):
+    """Runs the REAL Businesses.Apply (City expansion stage 2) on the loaded data. Returns the Businesses module."""
+    biz_data = lua.execute(open(root + "/BusinessData.lua", encoding="utf-8").read())
+    biz = lua.execute(open(root + "/Businesses.lua", encoding="utf-8").read())
+    biz._Data = biz_data
+    vec = lua.eval("function(x, y, z) return { X = x, Y = y, Z = z } end")
+    biz.Apply(data, vec)
+    return biz

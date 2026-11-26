@@ -50,9 +50,9 @@ local function wedge(ctx: Ctx, size: Vector3, x: number, bottom: number, z: numb
 end
 
 -- Ön cepheye tabela; metni okunur boyuta göre ölçeklenir
-local function signBoard(ctx: Ctx, text: string, width: number, height: number, bottom: number, z: number, bg: Color3, fg: Color3?, glow: boolean?)
+local function signBoard(ctx: Ctx, text: string, width: number, height: number, bottom: number, z: number, bg: Color3, fg: Color3?, glow: boolean?, font: string?)
 	local board = box(ctx, Vector3.new(width, height, 0.6), 0, bottom, z, bg, if glow then M.Neon else M.SmoothPlastic)
-	ctx.Kit:Label(board, Enum.NormalId.Front, text, fg or Color3.new(1, 1, 1), glow)
+	ctx.Kit:Label(board, Enum.NormalId.Front, text, fg or Color3.new(1, 1, 1), glow, font)
 	return board
 end
 
@@ -249,7 +249,7 @@ function Styles.townhouse(ctx: Ctx)
 	end
 end
 
-local function storefrontBase(ctx: Ctx, name: string, accent: Color3, bodyColor: Color3?)
+local function storefrontBase(ctx: Ctx, name: string, accent: Color3, bodyColor: Color3?, font: string?)
 	local w, d, h, rng = ctx.W, ctx.D, math.clamp(ctx.H, 10, 22), ctx.Rng
 	local body = bodyColor or pick(rng, PALETTES.stone)
 	local depth = d * 0.85
@@ -259,7 +259,7 @@ local function storefrontBase(ctx: Ctx, name: string, accent: Color3, bodyColor:
 	box(ctx, Vector3.new(w * 0.82, h * 0.5, 0.5), 0, 0.5, front - 0.2, rgb(150, 190, 210), M.Glass, { CastShadow = false, Transparency = 0.25 })
 	box(ctx, Vector3.new(5, 7.5, 0.6), 0, 0, front - 0.4, rgb(60, 60, 64), M.Metal, { CastShadow = false })
 	box(ctx, Vector3.new(w * 0.9, 0.5, 5), 0, h * 0.5 + 1.5, front - 2.5, accent, M.Fabric)
-	signBoard(ctx, name, math.min(w * 0.8, 40), 3.2, h * 0.5 + 2.6, front - 0.6, rgb(28, 28, 32), accent, true)
+	signBoard(ctx, name, math.min(w * 0.8, 40), 3.2, h * 0.5 + 2.6, front - 0.6, rgb(28, 28, 32), accent, true, font)
 	return front, h
 end
 
@@ -283,7 +283,17 @@ end
 function Styles.storefront_plain(ctx: Ctx)
 	local rng = ctx.Rng
 	local accent = pick(rng, { rgb(200, 70, 80), rgb(60, 140, 120), rgb(70, 100, 180), rgb(220, 160, 50), rgb(130, 80, 160) })
-	local front, h = storefrontBase(ctx, pick(rng, DECOR_SHOP_NAMES), accent, pick(rng, PALETTES.pastel))
+	-- Rastgele isim yine çekilir: tohum sırası korunur, binanın gövde/üst kat renkleri değişmez.
+	local name = pick(rng, DECOR_SHOP_NAMES)
+	local font = nil
+	local business = ctx.Lot.Business
+	if business then
+		-- Şehir genişletme aşama 2: işletme kaydındaki özgün isim, marka rengi (tabela yazısı + tente) ve yazı tipi
+		name = business.Name
+		accent = rgb(business.Primary[1], business.Primary[2], business.Primary[3])
+		font = business.Font
+	end
+	local front, h = storefrontBase(ctx, name, accent, pick(rng, PALETTES.pastel), font)
 	if ctx.H > 24 then
 		-- üstte daire katları
 		box(ctx, Vector3.new(ctx.W * 0.96, ctx.H - h, ctx.D * 0.8), 0, h, ctx.D * 0.1, pick(rng, PALETTES.stone), M.Concrete)
