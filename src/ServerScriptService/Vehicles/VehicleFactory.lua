@@ -605,7 +605,9 @@ function VehicleFactory.Build(defId: string, cframe: CFrame, options: { Color: C
 	align.AlignType = Enum.AlignType.PrimaryAxisParallel
 	align.Attachment0 = upright
 	align.PrimaryAxis = Vector3.new(0, 1, 0)
-	align.Responsiveness = if isBike then 30 else 8
+	-- Araç fizik kararlılığı: motosiklette tepki 30 → 18 (gövdeyi bir anda yuvarlayıp dar tekerleri kenarına
+	-- bastırmasın); tork aşağıda gerekenin ~12 katına indirildi.
+	align.Responsiveness = if isBike then 18 else 8
 	align.RigidityEnabled = false
 	align.Enabled = isBike -- arabada sadece "ters dönme yardımı" için geçici açılır
 	align.Parent = chassis
@@ -672,7 +674,8 @@ function VehicleFactory.Build(defId: string, cframe: CFrame, options: { Color: C
 			d.MotorMaxTorque = brakeTorque -- park freni
 		end
 	end
-	align.MaxTorque = total * g * (if isBike then 60 else 30)
+	-- (motosiklette eskiden ×60: 40° yatışta dik tutmak için gerekenin ~85 katı)
+	align.MaxTorque = total * g * (if isBike then 12 else 30)
 
 	model:SetAttribute("VehicleId", newVehicleId())
 	model:SetAttribute("DefId", defId)

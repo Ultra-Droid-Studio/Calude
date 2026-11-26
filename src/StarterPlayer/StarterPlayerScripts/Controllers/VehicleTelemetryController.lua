@@ -341,8 +341,20 @@ local function refreshPanel()
 				w.Name, w.Compression, w.Load, w.SlipRatio * 100, w.SlipAngle, w.Mu, w.SurfaceGrip,
 				w.SteerError, w.Wobble, if w.Sliding then "  KAYIYOR" else ""))
 		end
+	elseif c and c.IsBike and c.IsDriver and c.BikeTelemetry then
+		-- Motosiklet (araç fizik kararlılığı): teker teması, yerden kesilme sayısı, çekiş kontrolü / ABS, yatış
+		local t = c.BikeTelemetry
+		table.insert(lines, string.format("%s  (motosiklet)", c.Def.DisplayName))
+		table.insert(lines, string.format("hız %5.1f km/h   gaz %3d%%  fren %3d%%   ÇK %s  ABS %s", t.Speed * KMH,
+			math.floor(t.Throttle * 100), math.floor(t.Brake * 100), if t.TcActive then "AKTİF" else "-", if t.AbsActive then "AKTİF" else "-"))
+		table.insert(lines, string.format("burun %+5.1f°   yatış hedef %+5.1f°  gerçek %+5.1f°", t.Pitch, t.LeanTarget, t.LeanActual))
+		table.insert(lines, "TEKER  temas  sıkış  yüzey hızı  yer hızı  kesilme")
+		for _, w in t.Order do
+			table.insert(lines, string.format("%-5s  %-5s  %4.2f   %7.1f    %7.1f    %d", w.Name, if w.Contact then "var" else "YOK",
+				w.Compression, w.SurfaceSpeed, t.ForwardSpeed, w.Lifts))
+		end
 	else
-		table.insert(lines, "Otomobile sürücü olarak bin (motosiklet bu panelin dışında).")
+		table.insert(lines, "Otomobile ya da motosiklete sürücü olarak bin.")
 	end
 	liveLabel.Text = table.concat(lines, "\n")
 	resultsLabel.Text = if #results > 0 then "SON ÖLÇÜMLER\n" .. table.concat(results, "\n") else "SON ÖLÇÜMLER\n(henüz yok)"

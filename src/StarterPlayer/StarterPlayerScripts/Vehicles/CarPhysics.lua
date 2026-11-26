@@ -106,6 +106,11 @@ function CarPhysics.new(model: Model, def)
 		})
 	end
 	local sprung = model:GetAttribute("SprungMass") or chassis.AssemblyMass
+	-- Araç fizik kararlılığı: kayma algılama eşiği, çekiş kontrolünün izin verdiği patinajın üstünde olmalı.
+	-- (Pikapta ikisi de 0.22'ydi: tam gazda arka tekerler "kayıyor/tutuyor" arasında gidip geliyor, tutuş %18
+	-- düşüp kalkıyor ve otomatik karşı direksiyon devreye giriyordu.) Diğer araçlarda değer değişmez.
+	local slideEnterRatio = math.max(C.SlideEnterRatio, p.TractionSlip + 0.08)
+	local slideExitRatio = math.max(C.SlideExitRatio, p.TractionSlip * 0.6)
 	local total = model:GetAttribute("TotalMass") or sprung
 	local hx, hz = def.Track / 2, def.Wheelbase / 2
 	local unsprung = math.max(total - sprung, 0)
@@ -131,6 +136,8 @@ function CarPhysics.new(model: Model, def)
 		YawInertia = sprung * (def.Length * def.Length + def.Width * def.Width) / 12 + unsprung * (hx * hx + hz * hz),
 		Probe = probe,
 		ProbeIndex = 1,
+		SlideEnterRatio = slideEnterRatio,
+		SlideExitRatio = slideExitRatio,
 		-- durum
 		Throttle = 0,
 		BrakeInput = 0,
@@ -241,6 +248,10 @@ function CarPhysics:Step(dt: number, throttleIn: number, brakeIn: number, steerI
 	local sideSlip = if planarSpeed > 6 and vLong > 2 then math.atan2(vLat, vLong) else 0
 	if self.RearSliding and math.abs(self.Steer) < 0.25 and math.abs(sideSlip) > math.rad(4) then
 		steerDeg += math.clamp(math.deg(sideSlip) * p.CounterSteer, -def.MaxSteer * 0.5, def.MaxSteer * 0.5)
+		-- Araç fizik kararlılığı: karşı direksiyon hıza bağlı sınırı en fazla ölçülen kayma açısı kadar aşabilir
+		-- (yüksek hızda sınır ~5° iken 15–17° eklenip aracı ters yöne savurabiliyordu)
+		local cap = limit + math.abs(math.deg(sideSlip))
+		steerDeg = math.clamp(steerDeg, -cap, cap)
 	end
 	steerDeg = math.clamp(steerDeg, -def.MaxSteer, def.MaxSteer)
 	self.SteerDeg = steerDeg
@@ -313,10 +324,10 @@ function CarPhysics:Step(dt: number, throttleIn: number, brakeIn: number, steerI
 
 		-- Statik ↔ kinetik tutuş (histerezisli: titreşmesin)
 		if w.Sliding then
-			if slipAngle < C.SlideExitAngle and math.abs(slipRatio) < C.SlideExitRatio then
+			if slipAngle < C.SlideExitAngle and math.abs(slipRatio) < self.SlideExitRatio then
 				w.Sliding = false
 			end
-		elseif contact and planarSpeed > 3 and (slipAngle > C.SlideEnterAngle or math.abs(slipRatio) > C.SlideEnterRatio) then
+		elseif contact and planarSpeed > 3 and (slipAngle > C.SlideEnterAngle or math.abs(slipRatio) > self.SlideEnterRatio) then
 			w.Sliding = true
 		end
 

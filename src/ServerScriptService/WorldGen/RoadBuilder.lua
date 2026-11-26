@@ -9,6 +9,8 @@ local RoadBuilder = {}
 
 local LINE_T = 0.06
 local LINE_LIFT = 0.03
+-- Şerit çizgileri ve yaya geçidi şeritleri yolun 0.03 üstünde: sadece görsel, ÇARPIŞMAZ (araç fizik kararlılığı:
+-- çarpışmalı oldukları için teker her çizgide küçük bir basamağa çarpıyor, hız arttıkça araç titriyordu)
 
 type Adj = { Edge: any, Dir: Vector2, Width: number, Sidewalk: boolean, Ramp: boolean }
 
@@ -38,6 +40,13 @@ local function planNodes(data)
 	local roadTrim: { [number]: { [number]: number } } = {}
 	local walkTrim: { [number]: { [number]: number } } = {}
 	local pads = {} -- { Position, SizeX, SizeZ, Dir (Vector2?), Thickness, Disc, Sidewalk = {...} }
+	-- Araç fizik kararlılığı: kırpılan yol ucunun bağlandığı yüzey. "pad" = düz platform (uç platform yüksekliğinde
+	-- biter), "deck" = otoyol tabliyesine yandan bağlanan rampa (EdgeDist: rampa ekseninde tabliye kenarına uzaklık)
+	local joins: { [number]: { [number]: { Kind: string, EdgeDist: number? } } } = {}
+	local function setJoin(edgeId: number, nodeId: number, join)
+		joins[edgeId] = joins[edgeId] or {}
+		joins[edgeId][nodeId] = join
+	end
 	local function setTrim(edgeId: number, nodeId: number, road: number, walk: number)
 		roadTrim[edgeId] = roadTrim[edgeId] or {}
 		walkTrim[edgeId] = walkTrim[edgeId] or {}
@@ -94,6 +103,7 @@ local function planNodes(data)
 				local ax = axisOf(a.Dir)
 				local half = if ax == "E" or ax == "W" then sx / 2 else sz / 2
 				setTrim(a.Edge.Id, node.Id, half, half + (if anyWalk then sidewalkW else 0))
+				setJoin(a.Edge.Id, node.Id, { Kind = "pad" })
 			end
 			table.insert(pads, {
 				Position = node.Position, SizeX = sx, SizeZ = sz, Dir = nil, Thickness = thickness,
@@ -111,24 +121,39 @@ local function planNodes(data)
 			end
 			if #mains == 2 and mains[1].Dir:Dot(mains[2].Dir) < -0.98 then
 				-- Düz ana yol + yan rampalar: rampa kenarı otoyol tabliyesinin kenarından başlar
+				local mainDir = mains[1].Dir
 				for _, r in ramps do
 					local t = if elevated then maxW / 2 - 4 else maxW / 2
 					setTrim(r.Edge.Id, node.Id, t, t)
+					-- rampa ekseninin tabliye kenarını kestiği uzaklık (açılı bağlantı)
+					-- (rampanın en uzak kenarının tabliye kenarını kestiği yer: ana parça her şerit konumunda tabliyenin dışında başlar)
+					local sinA = math.max(math.abs(mainDir.X * r.Dir.Y - mainDir.Y * r.Dir.X), 0.3)
+					local cosA = math.abs(mainDir:Dot(r.Dir))
+					setJoin(r.Edge.Id, node.Id, { Kind = "deck", EdgeDist = (maxW / 2) / sinA + (r.Width / 2) * cosA / sinA })
 				end
 			elseif #mains == 2 and #ramps == 0 then
 				-- Açılı dönüş (otoyol köşesi): disk dolgu
-				table.insert(pads, { Position = node.Position, SizeX = maxW, SizeZ = maxW, Thickness = thickness, Disc = true })
+				local light = false
+				for _, a in mains do
+					light = light or a.Edge.Kind == "freeway" or a.Edge.Kind == "ramp"
+				end
+				table.insert(pads, { Position = node.Position, SizeX = maxW, SizeZ = maxW, Thickness = thickness, Disc = true, Light = light })
 			else
 				local dir = if #mains > 0 then mains[1].Dir else adj[1].Dir
 				local size = math.max(maxW, 16)
+				local perp = Vector2.new(-dir.Y, dir.X)
 				for _, a in adj do
 					setTrim(a.Edge.Id, node.Id, size / 2, size / 2)
+					-- yönlü kare platforma açılı giren yolun ekseni platform kenarını daha uzakta keser
+					local c1, c2 = math.abs(a.Dir:Dot(dir)), math.abs(a.Dir:Dot(perp))
+					local along, across = math.max(c1, c2, 0.3), math.min(c1, c2)
+					setJoin(a.Edge.Id, node.Id, { Kind = "pad", EdgeDist = (size / 2) / along + (a.Width / 2) * across / along })
 				end
 				table.insert(pads, { Position = node.Position, SizeX = size, SizeZ = size, Dir = dir, Thickness = thickness, Disc = false })
 			end
 		end
 	end
-	return roadTrim, walkTrim, pads
+	return roadTrim, walkTrim, pads, joins
 end
 
 local function trimmedEnds(data, e, trims): (Vector3, Vector3)
@@ -158,7 +183,7 @@ function RoadBuilder.Build(kit, world: Instance)
 	local sw = meta.Sidewalk
 	local lift = Vector3.new(0, LINE_LIFT, 0)
 
-	local roadTrim, walkTrim, pads = planNodes(data)
+	local roadTrim, walkTrim, pads, joins = planNodes(data)
 
 	local function strip(parent: Instance, a: Vector3, b: Vector3, width: number, thickness: number, lateral: number, color: Color3, material: Enum.Material, props)
 		local cf, length = kit.StripCFrame(a, b, thickness, lateral)
@@ -175,6 +200,40 @@ function RoadBuilder.Build(kit, world: Instance)
 		local sloped = math.abs(a.Y - b.Y) > 0.5
 		local thickness = if elevated then 2 elseif sloped then 1.5 else 1
 		local surfaceColor = if e.Kind == "freeway" or e.Kind == "ramp" then C.AsphaltLight else C.Asphalt
+		-- Araç fizik kararlılığı: eğimli yol kırpılıp düz platforma/tabliyeye bağlanırken ucu kendi eğimiyle alçalıyor,
+		-- birleşimde 0.2–1.3 studluk basamak kalıyordu (teker hızla çarpıyordu). Uç, bağlandığı yüzeyin yüksekliğinde
+		-- biter. Rampa otoyol tabliyesine açılı girdiği için: ana parça tabliye kenarında tabliye yüksekliğinde biter,
+		-- tabliyenin altına uzanan kısım tabliyenin 0.02 altında düz bir dolgu olur (kenarda boşluk ve çıkıntı yok).
+		local fillers = {}
+		local join = joins[e.Id]
+		if join then
+			for nodeId, j in join do
+				local nodePos = data.Nodes[nodeId].Position
+				local atA = nodeId == e.A
+				local endPt = if atA then a else b
+				local farPt = if atA then b else a
+				local flat = Vector3.new(farPt.X - nodePos.X, 0, farPt.Z - nodePos.Z)
+				local trimDist = Vector3.new(endPt.X - nodePos.X, 0, endPt.Z - nodePos.Z).Magnitude
+				if j.EdgeDist and j.EdgeDist > trimDist + 0.5 and flat.Magnitude > j.EdgeDist + 1 then
+					-- açılı bağlantı: ana parça yüzeyin kenarında, yüzey yüksekliğinde biter; kenarın içinde kalan kısım
+					-- yüzeyin 0.02 altında düz dolgu (kenarda boşluk yok, yüzeyin üstüne çıkıntı yok)
+					local edgePt = nodePos + flat.Unit * j.EdgeDist
+					local under = Vector3.new(0, 0.02, 0)
+					table.insert(fillers, { Vector3.new(endPt.X, nodePos.Y, endPt.Z) - under, edgePt - under })
+					endPt = edgePt
+				else
+					endPt = Vector3.new(endPt.X, nodePos.Y, endPt.Z)
+				end
+				if atA then
+					a = endPt
+				else
+					b = endPt
+				end
+			end
+		end
+		for _, f in fillers do
+			strip(surfaces, f[1], f[2], e.Width, thickness, 0, surfaceColor, Enum.Material.Asphalt, { CastShadow = false })
+		end
 		local road = strip(surfaces, a, b, e.Width, thickness, 0, surfaceColor, Enum.Material.Asphalt, { CastShadow = elevated or sloped })
 		if road then
 			road.Name = "Road_" .. e.Id
@@ -184,21 +243,21 @@ function RoadBuilder.Build(kit, world: Instance)
 		-- Şerit çizgileri
 		local la, lb = a + lift, b + lift
 		if e.Kind == "street" or e.Kind == "country" then
-			strip(markings, la, lb, 0.5, LINE_T, 0, C.LineYellow, Enum.Material.SmoothPlastic, { CastShadow = false })
+			strip(markings, la, lb, 0.5, LINE_T, 0, C.LineYellow, Enum.Material.SmoothPlastic, { CastShadow = false, CanCollide = false })
 		elseif e.Kind == "avenue" or e.Kind == "highway" then
 			local lane = e.Width / 4
-			strip(markings, la, lb, 0.35, LINE_T, 0.6, C.LineYellow, Enum.Material.SmoothPlastic, { CastShadow = false })
-			strip(markings, la, lb, 0.35, LINE_T, -0.6, C.LineYellow, Enum.Material.SmoothPlastic, { CastShadow = false })
-			strip(markings, la, lb, 0.35, LINE_T, lane, C.LineWhite, Enum.Material.SmoothPlastic, { CastShadow = false })
-			strip(markings, la, lb, 0.35, LINE_T, -lane, C.LineWhite, Enum.Material.SmoothPlastic, { CastShadow = false })
+			strip(markings, la, lb, 0.35, LINE_T, 0.6, C.LineYellow, Enum.Material.SmoothPlastic, { CastShadow = false, CanCollide = false })
+			strip(markings, la, lb, 0.35, LINE_T, -0.6, C.LineYellow, Enum.Material.SmoothPlastic, { CastShadow = false, CanCollide = false })
+			strip(markings, la, lb, 0.35, LINE_T, lane, C.LineWhite, Enum.Material.SmoothPlastic, { CastShadow = false, CanCollide = false })
+			strip(markings, la, lb, 0.35, LINE_T, -lane, C.LineWhite, Enum.Material.SmoothPlastic, { CastShadow = false, CanCollide = false })
 			if e.Kind == "highway" then
 				-- kenar çizgileri
-				strip(markings, la, lb, 0.35, LINE_T, e.Width / 2 - 1, C.LineWhite, Enum.Material.SmoothPlastic, { CastShadow = false })
-				strip(markings, la, lb, 0.35, LINE_T, -(e.Width / 2 - 1), C.LineWhite, Enum.Material.SmoothPlastic, { CastShadow = false })
+				strip(markings, la, lb, 0.35, LINE_T, e.Width / 2 - 1, C.LineWhite, Enum.Material.SmoothPlastic, { CastShadow = false, CanCollide = false })
+				strip(markings, la, lb, 0.35, LINE_T, -(e.Width / 2 - 1), C.LineWhite, Enum.Material.SmoothPlastic, { CastShadow = false, CanCollide = false })
 			end
 		elseif e.Kind == "freeway" then
-			strip(markings, la, lb, 0.35, LINE_T, 13, C.LineWhite, Enum.Material.SmoothPlastic, { CastShadow = false })
-			strip(markings, la, lb, 0.35, LINE_T, -13, C.LineWhite, Enum.Material.SmoothPlastic, { CastShadow = false })
+			strip(markings, la, lb, 0.35, LINE_T, 13, C.LineWhite, Enum.Material.SmoothPlastic, { CastShadow = false, CanCollide = false })
+			strip(markings, la, lb, 0.35, LINE_T, -13, C.LineWhite, Enum.Material.SmoothPlastic, { CastShadow = false, CanCollide = false })
 			-- Orta refüj ve kenar bariyerleri (jersey duvar)
 			local up = Vector3.new(0, 1.25, 0)
 			strip(markings, a + up * 2, b + up * 2, 1.6, 2.5, 0, C.Barrier, Enum.Material.Concrete)
@@ -247,7 +306,8 @@ function RoadBuilder.Build(kit, world: Instance)
 	for _, pad in pads do
 		local pos = pad.Position
 		if pad.Disc then
-			kit:Cylinder(junctions, pad.Thickness, pad.SizeX, CFrame.new(pos - Vector3.new(0, pad.Thickness / 2 + 0.06, 0)), C.AsphaltLight, Enum.Material.Asphalt)
+			-- yolla aynı seviye ve aynı renk (eskiden 0.06 aşağıdaydı: teker köşede çukura düşüp çarpıyordu)
+			kit:Cylinder(junctions, pad.Thickness, pad.SizeX, CFrame.new(pos - Vector3.new(0, pad.Thickness / 2, 0)), if pad.Light then C.AsphaltLight else C.Asphalt, Enum.Material.Asphalt)
 		elseif pad.Dir then
 			local d = pad.Dir
 			local cf = CFrame.lookAt(pos, pos + Vector3.new(d.X, 0, d.Y)) * CFrame.new(0, -pad.Thickness / 2, 0)
@@ -288,7 +348,7 @@ function RoadBuilder.Build(kit, world: Instance)
 						for _, dist in { half + 1, half + 7 } do
 							local p = pos + dir3 * dist + Vector3.new(0, LINE_LIFT - LINE_T / 2, 0)
 							local cf = CFrame.lookAt(p, p + dir3)
-							kit:Box(markings, Vector3.new(a.Width - 1, LINE_T, 0.7), cf, C.LineWhite, Enum.Material.SmoothPlastic, { CastShadow = false })
+							kit:Box(markings, Vector3.new(a.Width - 1, LINE_T, 0.7), cf, C.LineWhite, Enum.Material.SmoothPlastic, { CastShadow = false, CanCollide = false })
 						end
 					end
 				end

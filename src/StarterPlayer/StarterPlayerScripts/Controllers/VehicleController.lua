@@ -163,6 +163,56 @@ local function setRearGrip(c, low: boolean)
 	end
 end
 
+-- Motosiklet (eski sürüş adımı) — araç fizik kararlılığı düzeltmesi:
+--   * Çekiş kontrolü: tahrikli teker hedefi "yer hızı + izinli patinaj" (eskiden her zaman azami hız / R). Teker bir
+--     an yükünü kaybedince (tümsek, basamak) artık azami hıza fırlamaz; yere fazla hızla değip arkayı kaydırmaz.
+--     Yerdeyken çekiş kuvveti yine motor torkuyla sınırlı → hızlanma değişmez.
+--   * ABS: frenlenen teker yer hızının %90'ının altına inmez (arka teker kilitlenip kaymaz).
+--   * Yatış hedefi saniyede en fazla LEAN_RATE kadar değişir (klavyede ±40°'ye 0.3 sn'de sıçramaz).
+local BIKE_SLIP = 0.12 -- izinli patinaj oranı
+local BIKE_MIN_SLIP = 1.5 -- stud/sn: kalkışta tekerin yerden hızlı dönebileceği en küçük fark
+local BIKE_ABS_SLIP = 0.1
+local LEAN_RATE = 1.5 -- rad/sn (~86°/sn)
+
+-- F4 telemetrisi için motosiklet ölçümleri (sürüşü etkilemez)
+local function bikeTelemetry(c, forwardSpeed: number, throttle: number, brake: number, tcActive: boolean, absActive: boolean)
+	local t = c.BikeTelemetry
+	if not t then
+		t = { Wheels = {}, Order = {} }
+		c.BikeTelemetry = t
+	end
+	local def = c.Def
+	local cf = c.Chassis.CFrame
+	t.Speed = c.Chassis.AssemblyLinearVelocity.Magnitude
+	t.ForwardSpeed = forwardSpeed
+	t.Throttle, t.Brake = throttle, brake
+	t.Pitch = math.deg(math.asin(math.clamp(cf.LookVector.Y, -1, 1)))
+	t.LeanActual = math.deg(math.asin(math.clamp(-cf.RightVector.Y, -1, 1)))
+	t.LeanTarget = math.deg(c.Lean or 0)
+	t.TcActive, t.AbsActive = tcActive, absActive
+	for _, s in c.Struts do
+		local name = tostring(s:GetAttribute("Wheel"))
+		local w = t.Wheels[name]
+		if not w then
+			w = { Name = name, Lifts = 0, Contact = true, Compression = 0, SurfaceSpeed = 0 }
+			t.Wheels[name] = w
+			table.insert(t.Order, w)
+		end
+		local contact = s.CurrentPosition > -def.Travel + 0.03
+		if w.Contact and not contact then
+			w.Lifts += 1 -- yerden kesilme sayısı
+		end
+		w.Contact = contact
+		w.Compression = (s.CurrentPosition + def.Travel) / def.Travel
+		local wheel = c.Model:FindFirstChild("Wheel_" .. name)
+		local knuckle = s.Parent
+		if wheel and wheel:IsA("BasePart") and knuckle and knuckle:IsA("BasePart") then
+			local omega = (wheel.AssemblyAngularVelocity - knuckle.AssemblyAngularVelocity):Dot(knuckle.CFrame.RightVector)
+			w.SurfaceSpeed = omega * def.WheelRadius * VehicleDefinitions.DriveSign
+		end
+	end
+end
+
 local function driveStep(dt: number)
 	local c = current
 	if not c or not c.IsDriver or not c.Chassis.Parent then
@@ -190,6 +240,7 @@ local function driveStep(dt: number)
 	local driveTorque, brakeTorque, coastTorque = c.DriveTorque, c.BrakeTorque, c.CoastTorque
 	local braking, reversing = false, false
 	local driveVelocity, driveMax, freeMax = 0, coastTorque, coastTorque
+	local brakeVelocity = 0 -- frende tekerlerin hedef açısal hızı (motosiklette ABS)
 
 	if throttle > 0.05 then
 		if forwardSpeed < -2 then
@@ -198,6 +249,10 @@ local function driveStep(dt: number)
 		else
 			local taper = math.clamp(1 - (forwardSpeed / def.MaxSpeed) ^ 2, 0.12, 1)
 			driveVelocity = sign * def.MaxSpeed / R
+			if c.IsBike then
+				local allow = math.max(BIKE_MIN_SLIP, BIKE_SLIP * math.abs(forwardSpeed))
+				driveVelocity = sign * math.min(math.max(forwardSpeed, 0) + allow, def.MaxSpeed) / R
+			end
 			driveMax = driveTorque * taper * throttle
 			freeMax = 0 -- tahriksiz tekerlekler serbest döner
 		end
@@ -205,6 +260,10 @@ local function driveStep(dt: number)
 		if forwardSpeed > 2 then
 			braking = true
 			driveVelocity, driveMax, freeMax = 0, brakeTorque * brake, brakeTorque * brake
+			if c.IsBike then
+				brakeVelocity = sign * forwardSpeed * (1 - BIKE_ABS_SLIP) / R
+				driveVelocity = brakeVelocity
+			end
 		else
 			reversing = true
 			driveVelocity = -sign * def.ReverseSpeed / R
@@ -222,7 +281,7 @@ local function driveStep(dt: number)
 			motor.AngularVelocity = driveVelocity
 			motor.MotorMaxTorque = driveMax
 		else
-			motor.AngularVelocity = 0
+			motor.AngularVelocity = if braking then brakeVelocity else 0
 			motor.MotorMaxTorque = if braking then brakeTorque * math.max(throttle, brake) else freeMax
 		end
 	end
@@ -235,7 +294,8 @@ local function driveStep(dt: number)
 		if right.Magnitude > 0.05 then
 			right = right.Unit
 			local baseUp = right:Cross(forward).Unit
-			local lean = c.Steer * math.clamp(speed / 25, 0, 1) * math.rad(def.MaxLean or 30)
+			local leanTarget = c.Steer * math.clamp(speed / 25, 0, 1) * math.rad(def.MaxLean or 30)
+			local lean = c.Lean + math.clamp(leanTarget - c.Lean, -LEAN_RATE * dt, LEAN_RATE * dt)
 			c.Lean = lean
 			c.Upright.PrimaryAxis = (baseUp * math.cos(lean) + right * math.sin(lean)).Unit
 		end
@@ -250,6 +310,25 @@ local function driveStep(dt: number)
 		else
 			c.FlipTimer = math.max(c.FlipTimer - dt, 0)
 		end
+	end
+
+	if c.IsBike then
+		-- telemetri (F4): çekiş kontrolü / ABS gerçekten sınırlıyor mu
+		local tcActive, absActive = false, false
+		for _, motor in c.Motors do
+			local wheel = c.Model:FindFirstChild("Wheel_" .. tostring(motor:GetAttribute("Wheel")))
+			local knuckle = motor.Parent
+			if wheel and wheel:IsA("BasePart") and knuckle and knuckle:IsA("BasePart") then
+				local omega = (wheel.AssemblyAngularVelocity - knuckle.AssemblyAngularVelocity):Dot(knuckle.CFrame.RightVector)
+				local surface = omega * R * sign
+				if throttle > 0.3 and motor:GetAttribute("Driven") and surface > forwardSpeed + 2.5 then
+					tcActive = true
+				elseif braking and forwardSpeed > 3 and surface < forwardSpeed * 0.92 then
+					absActive = true
+				end
+			end
+		end
+		bikeTelemetry(c, forwardSpeed, throttle, brake, tcActive, absActive)
 	end
 
 	c.Speed = speed
@@ -339,7 +418,7 @@ local function enter(seat: Seat)
 	local c = {
 		Model = model, Def = def, Seat = seat, IsDriver = isDriver, IsBike = isBike,
 		Chassis = model.PrimaryPart :: BasePart,
-		Motors = {}, SteerConstraints = {}, RearWheels = {},
+		Motors = {}, SteerConstraints = {}, RearWheels = {}, Struts = {},
 		Upright = nil :: AlignOrientation?,
 		DriveTorque = model:GetAttribute("DriveTorque") or 1e4,
 		BrakeTorque = model:GetAttribute("BrakeTorque") or 1e4,
@@ -354,6 +433,9 @@ local function enter(seat: Seat)
 			table.insert(c.Motors, d)
 		elseif d:IsA("CylindricalConstraint") and d:GetAttribute("Steer") then
 			table.insert(c.SteerConstraints, d)
+			table.insert(c.Struts, d)
+		elseif d:IsA("CylindricalConstraint") and d:GetAttribute("Wheel") then
+			table.insert(c.Struts, d)
 		elseif d:IsA("BasePart") and d:GetAttribute("Rear") and d:GetAttribute("Wheel") then
 			table.insert(c.RearWheels, d)
 		elseif d:IsA("AlignOrientation") and d.Name == "Upright" and isBike then
