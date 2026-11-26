@@ -135,10 +135,11 @@ function CarModelKit.Get(name: string)
 end
 
 -- defId için kullanılacak model (yoksa nil). traffic = true → NPC'ye özel varyantlar (taksi) da olabilir.
-function CarModelKit.Pick(defId: string, rng: Random, traffic: boolean?): string?
+-- variantScale: varyant olasılığı çarpanı (Yaşayan Şehir: merkezde/havalimanında daha çok taksi); yoksa 1.
+function CarModelKit.Pick(defId: string, rng: Random, traffic: boolean?, variantScale: number?): string?
 	if traffic then
 		for _, v in Config.TrafficVariants[defId] or {} do
-			if rng:NextNumber() < v.Chance and CarModelKit.Get(v.Model) then
+			if rng:NextNumber() < v.Chance * (variantScale or 1) and CarModelKit.Get(v.Model) then
 				return v.Model
 			end
 		end

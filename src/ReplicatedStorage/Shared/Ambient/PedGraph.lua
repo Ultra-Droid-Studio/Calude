@@ -9,7 +9,8 @@
 -- Kaldırım bayrağı olmayan haritada grafik boş kalır → yaya doğmaz (geçersiz yolda NPC üretilmez).
 --
 -- graph.Nodes[id]  { Id, X, Y, Z, Links = {link}, Spot = {Kind, FaceX, FaceZ}? , Comp }
--- graph.Links[id]  { Id, A, B (düğüm), Length, Crossing, Node (kavşak), ArmEdge, ArmPhase }
+-- graph.Links[id]  { Id, A, B (düğüm), Length, Crossing, Node (kavşak), ArmEdge, ArmPhase, Door (bina kapısı) }
+-- graph.Nodes[id].Door: Entrances kaydı (kapı düğümü; çıkmaz uç)
 
 local PedGraph = {}
 
@@ -161,27 +162,7 @@ function PedGraph.Build(data, tg)
 	end
 	graph.ComponentSizes = sizes
 
-	-- Doğma ızgarası: geçit olmayan bağlantılar
-	for _, l in ipairs(graph.Links) do
-		if not l.Crossing and sizes[l.A.Comp] >= 6 then
-			local steps = max(1, floor(l.Length / 40))
-			local seen = {}
-			for i = 0, steps do
-				local t = i / steps
-				local x, z = l.A.X + (l.B.X - l.A.X) * t, l.A.Z + (l.B.Z - l.A.Z) * t
-				local k = floor(x / GRID) .. ":" .. floor(z / GRID)
-				if not seen[k] then
-					seen[k] = true
-					local cell = graph.Grid[k]
-					if not cell then
-						cell = {}
-						graph.Grid[k] = cell
-					end
-					cell[#cell + 1] = l
-				end
-			end
-		end
-	end
+	PedGraph.RebuildGrid(graph)
 
 	-- Mola noktaları: dükkân girişleri, banklar, otobüs durakları → en yakın kaldırım düğümü
 	local nodeGrid = {}
@@ -226,6 +207,33 @@ function PedGraph.Build(data, tg)
 	return graph
 end
 
+-- Doğma/hedef ızgarası: kaldırım bağlantıları (geçit ve bina kapısı bağlantıları hariç). Entrances kaldırımı
+-- böldükten sonra yeniden kurulur.
+function PedGraph.RebuildGrid(graph)
+	graph.Grid = {}
+	local sizes = graph.ComponentSizes
+	for _, l in ipairs(graph.Links) do
+		if not l.Crossing and not l.Door and (sizes[l.A.Comp] or 0) >= 6 then
+			local steps = max(1, floor(l.Length / 40))
+			local seen = {}
+			for i = 0, steps do
+				local t = i / steps
+				local x, z = l.A.X + (l.B.X - l.A.X) * t, l.A.Z + (l.B.Z - l.A.Z) * t
+				local k = floor(x / GRID) .. ":" .. floor(z / GRID)
+				if not seen[k] then
+					seen[k] = true
+					local cell = graph.Grid[k]
+					if not cell then
+						cell = {}
+						graph.Grid[k] = cell
+					end
+					cell[#cell + 1] = l
+				end
+			end
+		end
+	end
+end
+
 function PedGraph.LinksNear(graph, x, z, radius)
 	local out, seen = {}, {}
 	for i = floor((x - radius) / GRID), floor((x + radius) / GRID) do
@@ -242,7 +250,7 @@ function PedGraph.LinksNear(graph, x, z, radius)
 end
 
 -- Basit A* (sınırlı): from → to düğüm listesi (from hariç). Bulamazsa nil.
-function PedGraph.Path(_graph, from, to, maxNodes)
+function PedGraph.Path(graph, from, to, maxNodes)
 	if from == to then
 		return {}
 	end
@@ -276,7 +284,7 @@ function PedGraph.Path(_graph, from, to, maxNodes)
 		for _, l in ipairs(best.Links) do
 			local o = (l.A == best) and l.B or l.A
 			if not closed[o] then
-				local cost = g[best] + l.Length + (l.Crossing and 12 or 0) -- gereksiz karşıya geçmeyi az tercih et
+				local cost = g[best] + l.Length + (l.Crossing and (graph.CrossPenalty or 12) or 0) -- gereksiz karşıya geçmeyi az tercih et
 				if not g[o] or cost < g[o] then
 					if not g[o] then
 						open[#open + 1] = o

@@ -245,8 +245,11 @@ function TrafficGraph.Build(data, cfg, opts)
 	local roadTrim, walkTrim, pads = planNodes(data)
 	local graph = {
 		Lanes = {}, Connectors = {}, Nodes = {}, Grid = {}, Pads = pads, RoadTrim = roadTrim, WalkTrim = walkTrim,
-		Meta = data.Meta, Cfg = cfg,
+		Meta = data.Meta, Cfg = cfg, EdgeKind = {},
 	}
+	for _, e in ipairs(data.EdgeList) do
+		graph.EdgeKind[e.Id] = e.Kind
+	end
 	local signal = cfg.Signal
 
 	-- Düğümler
@@ -256,7 +259,8 @@ function TrafficGraph.Build(data, cfg, opts)
 			Id = n.Id, X = p.X, Y = p.Y, Z = p.Z, Degree = #n.Edges, Pad = pads[n.Id],
 			Signal = n.Signal, Stop = n.Stop, Crosswalk = n.Crosswalk,
 			Connectors = {}, InLanes = {}, OutLanes = {}, ArmPhase = {}, ArmEdge = {}, ArmEdges = {},
-			Reserved = {}, Waiting = {}, Offset = (n.Id * 7.31) % (2 * (signal.Green + signal.Yellow + signal.AllRed)),
+			Reserved = {}, Waiting = {}, Offset = 0, Greens = { signal.Green, signal.Green },
+			Cycle = 2 * (signal.Green + signal.Yellow + signal.AllRed),
 		}
 	end
 
@@ -346,6 +350,7 @@ function TrafficGraph.Build(data, cfg, opts)
 			node.Control = "Free"
 		elseif node.Signal then
 			node.Control = "Signal"
+			TrafficGraph._planSignal(graph, node, arms)
 		elseif node.Stop then
 			node.Control = "Stop"
 		else
@@ -497,25 +502,69 @@ function TrafficGraph.ConnPoint(conn, s)
 end
 
 -- Işık durumu: "G" | "Y" | "R" ve bu durumun kalan süresi. time: sunucu zamanı (tüm oyuncularda aynı)
+-- Işık planı (Yaşayan Şehir): yüksek sınıflı yolun (cadde/otoyol) fazına uzun yeşil, yan yola kısa; eşitse eşit.
+-- Ofset "yeşil dalga": ana yol yönündeki koordinat / dalga hızı → o yönde dalga hızıyla giden araçlar art arda
+-- yeşile denk gelir. Tamamen haritadan hesaplanır: tüm istemcilerde aynı plan, aynı sunucu saati → aynı ışık.
+local CLASS_RANK = { freeway = 3, highway = 3, avenue = 3, street = 1, country = 1, ramp = 1 }
+
+function TrafficGraph._planSignal(graph, node, arms)
+	local s = graph.Cfg.Signal
+	local rank = { 0, 0 }
+	local axisX = { false, false }
+	for edgeId, d in pairs(arms) do
+		local phase = node.ArmPhase[edgeId] or 1
+		local e = graph.EdgeKind[edgeId]
+		local r = CLASS_RANK[e] or 1
+		if r > rank[phase] then
+			rank[phase] = r
+		end
+		axisX[phase] = abs(d[1]) > 0.7
+	end
+	local g1, g2 = s.Green, s.Green
+	local main = 1
+	if rank[1] > rank[2] then
+		g1, g2, main = s.MainGreen or s.Green, s.SideGreen or s.Green, 1
+	elseif rank[2] > rank[1] then
+		g1, g2, main = s.SideGreen or s.Green, s.MainGreen or s.Green, 2
+	end
+	node.Greens = { g1, g2 }
+	node.Cycle = g1 + g2 + 2 * (s.Yellow + s.AllRed)
+	local coord = axisX[main] and node.X or node.Z
+	local wave = s.WaveSpeed or 0
+	local startMain = (main == 1) and 0 or (g1 + s.Yellow + s.AllRed)
+	if wave > 0 then
+		node.Offset = (startMain - coord / wave) % node.Cycle -- ana yolun yeşili ana yol boyunca kayar
+	else
+		node.Offset = (node.Id * 7.31) % node.Cycle
+	end
+end
+
 function TrafficGraph.SignalState(graph, node, phase, time)
 	local s = graph.Cfg.Signal
-	local half = s.Green + s.Yellow + s.AllRed
-	local cycle = 2 * half
+	local g1, g2 = node.Greens[1], node.Greens[2]
+	local cycle = node.Cycle
 	local t = (time + node.Offset) % cycle
-	local tp = (t - (phase - 1) * half) % cycle
-	if tp < s.Green then
-		return "G", s.Green - tp
-	elseif tp < s.Green + s.Yellow then
-		return "Y", s.Green + s.Yellow - tp
+	local start = (phase == 1) and 0 or (g1 + s.Yellow + s.AllRed)
+	local green = (phase == 1) and g1 or g2
+	local tp = (t - start) % cycle
+	if tp < green then
+		return "G", green - tp
+	elseif tp < green + s.Yellow then
+		return "Y", green + s.Yellow - tp
 	end
 	return "R", cycle - tp
 end
 
 -- Yaya: kolu (o kolun trafiği kırmızıyken) geçebilir mi? Diğer faz yeşil ve kalan süre yetiyorsa.
+-- Yaya yeşili: kolun trafiği kırmızı (diğer faz yeşil) ve karşı trafiğe yeşil yanana kadar kalan süre (kalan yeşil +
+-- sarı + tümü kırmızı) geçiş süresinin PedClearFactor katından uzun. (Yaşayan Şehir: ana yolda yan faz kısa olduğu için
+-- "kalan yeşil > geçiş süresi" geniş caddede neredeyse hiç sağlanmıyordu; geç kalan yayayı araçlar zaten bekler.)
 function TrafficGraph.WalkAllowed(graph, node, armPhase, time, crossSeconds)
 	local other = (armPhase == 1) and 2 or 1
 	local state, remaining = TrafficGraph.SignalState(graph, node, other, time)
-	return state == "G" and remaining > crossSeconds, state, remaining
+	local s = graph.Cfg.Signal
+	local window = remaining + s.Yellow + s.AllRed
+	return state == "G" and (crossSeconds <= 0 or window > crossSeconds * (s.PedClearFactor or 1)), state, remaining
 end
 
 -- ===== Çatışma haritası (tembel; düğüm başına bir kez) =====
@@ -532,6 +581,7 @@ end
 
 local CLEARANCE = 7.5 -- iki eğri bu kadar yaklaşıyorsa (araç gövdeleri sürtünür) çakışma say
 
+-- a, b: { PX = {...}, PZ = {...} } çoklu çizgiler
 local function pathsCross(a, b)
 	for i = 1, #a.PX - 1 do
 		for j = 1, #b.PX - 1 do
@@ -553,14 +603,45 @@ local function pathsCross(a, b)
 	return false
 end
 
+-- Platformsuz düğümlerde (otoyol/rampa birleşimi) bağlantı eğrisi kısa ya da sıfır olabilir ve bir rampa döngüsü
+-- şeridin düğümden önceki kısmının üstünden geçebilir: çakışma için bağlantıya şeridin son ve hedef şeridin ilk
+-- EXT studu da eklenir (Yaşayan Şehir: otoyol düğümünde rampadan gelenle çarpışma bulundu).
+local EXT = 15
+local function extendedPath(conn)
+	local PX, PZ = {}, {}
+	local from, to = conn.From, conn.To
+	local e1 = math.min(EXT, from.Length)
+	for k = 0, 2 do
+		local s = from.Length - e1 + e1 * k / 3
+		local t = (from.Length > 0) and s / from.Length or 0
+		PX[#PX + 1] = from.X0 + (from.X1 - from.X0) * t
+		PZ[#PZ + 1] = from.Z0 + (from.Z1 - from.Z0) * t
+	end
+	for i = 1, #conn.PX do
+		PX[#PX + 1], PZ[#PZ + 1] = conn.PX[i], conn.PZ[i]
+	end
+	local e2 = math.min(EXT, to.Length)
+	for k = 1, 3 do
+		local t = (to.Length > 0) and (e2 * k / 3) / to.Length or 0
+		PX[#PX + 1] = to.X0 + (to.X1 - to.X0) * t
+		PZ[#PZ + 1] = to.Z0 + (to.Z1 - to.Z0) * t
+	end
+	return { PX = PX, PZ = PZ }
+end
+
 function TrafficGraph.Conflicts(_graph, node)
 	if node.ConflictMap then
 		return node.ConflictMap
 	end
 	local map = {}
 	local list = node.Connectors
+	local boxed = node.Pad and node.Pad.Kind == "Box"
+	local ext = {}
 	for i = 1, #list do
 		map[list[i]] = map[list[i]] or {}
+		if not boxed then
+			ext[list[i]] = extendedPath(list[i])
+		end
 	end
 	for i = 1, #list do
 		local a = list[i]
@@ -570,7 +651,7 @@ function TrafficGraph.Conflicts(_graph, node)
 			if a.To == b.To then
 				conflict = a.From ~= b.From -- aynı şeride birleşme
 			elseif a.From.Group ~= b.From.Group then
-				conflict = pathsCross(a, b)
+				conflict = pathsCross(a, b) or (not boxed and pathsCross(ext[a], ext[b]))
 			end
 			if conflict then
 				map[a][b] = true

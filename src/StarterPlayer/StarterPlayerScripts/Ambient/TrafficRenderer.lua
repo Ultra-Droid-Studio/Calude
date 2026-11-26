@@ -220,9 +220,9 @@ function TrafficRenderer.Spin(model: Model, speed: number, dt: number)
 	end
 end
 
--- Havuzdan al (yoksa üret), boya, sahneye koy
-function TrafficRenderer.Acquire(defId: string, lightsOn: boolean): Model
-	local bodyName = CarModelKit.Pick(defId, rng, true)
+-- Havuzdan al (yoksa üret), boya, sahneye koy. taxiScale: bölgeye göre taksi olasılığı çarpanı
+function TrafficRenderer.Acquire(defId: string, lightsOn: boolean, taxiScale: number?): Model
+	local bodyName = CarModelKit.Pick(defId, rng, true, taxiScale)
 	local key = defId .. "|" .. (bodyName or "box")
 	local pool = pools[key]
 	local model = pool and table.remove(pool)

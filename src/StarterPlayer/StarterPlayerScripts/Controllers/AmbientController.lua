@@ -14,6 +14,11 @@
 --
 -- Çalışma anı sınır geçersiz kılma (Studio testleri için, Workspace attribute'ları):
 --   AmbientEnabled (bool), AmbientMaxVehicles (sayı), AmbientMaxPedestrians (sayı)
+--
+-- Yaşayan Şehir: bütçe = AmbientConfig[cihaz sınıfı][Şehir yoğunluğu ayarı] × uyarlanır kalite. Cihaz sınıfı:
+-- Desktop (dokunmatik değil), Tablet (dokunmatik, ekranın kısa kenarı ≥ 700), Mobile (telefon). Uyarlanır kalite:
+-- kare hızı uzun süre 35'in altındaysa bütçe %10'ar azalır (en az %50), 55'in üstüne çıkınca geri artar.
+-- Görünen NPC kaldırılmaz (IsVisible: ekranda ve bir bina arkasında değil).
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -28,6 +33,8 @@ local TrafficGraph = require(AmbientShared:WaitForChild("TrafficGraph"))
 local PedGraph = require(AmbientShared:WaitForChild("PedGraph"))
 local TrafficSim = require(AmbientShared:WaitForChild("TrafficSim"))
 local PedSim = require(AmbientShared:WaitForChild("PedSim"))
+local PedAnim = require(AmbientShared:WaitForChild("PedAnim"))
+local Entrances = require(AmbientShared:WaitForChild("Entrances"))
 local MapDefinitions = require(Shared:WaitForChild("MapDefinitions"))
 local VehicleDefinitions = require(Shared:WaitForChild("VehicleDefinitions"))
 local AmbientConfig = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("AmbientConfig"))
@@ -37,6 +44,7 @@ local AmbientFolder = script.Parent.Parent:WaitForChild("Ambient")
 local TrafficRenderer = require(AmbientFolder:WaitForChild("TrafficRenderer"))
 local PedRenderer = require(AmbientFolder:WaitForChild("PedRenderer"))
 local SignalRenderer = require(AmbientFolder:WaitForChild("SignalRenderer"))
+local DoorRenderer = require(AmbientFolder:WaitForChild("DoorRenderer"))
 local AmbientDebug = require(AmbientFolder:WaitForChild("AmbientDebug"))
 
 local AmbientController = {
@@ -58,6 +66,10 @@ local debugOn = false
 local lastDebug = 0
 local lastSignals = 0
 local costTraffic, costPeds = 0, 0
+local quality = 1 -- uyarlanır kalite çarpanı (0.5..1)
+local frameDt = 1 / 60
+local slowFor, fastFor = 0, 0
+local frameNo = 0
 local lightsOn = false
 local rayParams = RaycastParams.new()
 rayParams.FilterType = Enum.RaycastFilterType.Exclude
@@ -87,8 +99,31 @@ local function districtDensity(x: number, z: number, hour: number): number
 	return d.NightDensity + (d.DayDensity - d.NightDensity) * w
 end
 
-local function isMobile(): boolean
-	return controllers.InputController:IsTouch()
+local function deviceClass(): string
+	if not controllers.InputController:IsTouch() then
+		return "Desktop"
+	end
+	local camera = Workspace.CurrentCamera
+	local size = camera and camera.ViewportSize or Vector2.new(800, 400)
+	return if math.min(size.X, size.Y) >= 700 then "Tablet" else "Mobile"
+end
+
+local function densityPreset(): string
+	local settings = controllers.SettingsController
+	local value = settings and settings:Get("CityDensity")
+	return if type(value) == "string" then value else "Normal"
+end
+
+-- t: sayı | { Desktop = sayı | { Low, Normal, High }, Tablet = ..., Mobile = ... }
+local function budget(t: any): number
+	if type(t) == "number" then
+		return t
+	end
+	local row = t[deviceClass()] or t.Mobile or t.Desktop
+	if type(row) == "number" then
+		return row
+	end
+	return row[densityPreset()] or row.Normal
 end
 
 local function limit(kind: string): number
@@ -97,7 +132,30 @@ local function limit(kind: string): number
 		return math.max(0, math.floor(override))
 	end
 	local t = if kind == "Vehicles" then TCFG.MaxVehicles else PCFG.MaxPedestrians
-	return if isMobile() then t.Mobile else t.Desktop
+	return math.floor(budget(t) * quality + 0.5)
+end
+
+-- Uyarlanır kalite: kare süresi ortalaması (her karede) → bütçe çarpanı
+local function updateQuality(dt: number)
+	frameDt += (math.min(dt, 0.25) - frameDt) * 0.05
+	if frameDt > 1 / 35 then
+		slowFor += dt
+		fastFor = 0
+		if slowFor > 3 and quality > 0.5 then
+			quality = math.max(0.5, quality - 0.1)
+			slowFor = 0
+			Log.Info(string.format("Kare hızı düşük (%.0f FPS): NPC bütçesi %%%d", 1 / frameDt, math.round(quality * 100)))
+		end
+	elseif frameDt < 1 / 55 then
+		fastFor += dt
+		slowFor = 0
+		if fastFor > 8 and quality < 1 then
+			quality = math.min(1, quality + 0.1)
+			fastFor = 0
+		end
+	else
+		slowFor, fastFor = 0, 0
+	end
 end
 
 local function enabled(): boolean
@@ -125,25 +183,36 @@ local function shouldRun(): boolean
 	return subjectPart() ~= nil
 end
 
--- Doğma noktası görünür mü? (uzaksa ya da ekran dışında / bir binanın arkasındaysa doğabilir)
+-- Nokta oyuncunun ekranında görünüyor mu? (ekran içinde ve kameradan bakışı bir binayla kapanmamış)
+local function isVisible(x: number, y: number, z: number, _dist: number?): boolean
+	local camera = Workspace.CurrentCamera
+	if not camera then
+		return false
+	end
+	local target = Vector3.new(x, y + 2.5, z)
+	local _, onScreen = camera:WorldToViewportPoint(target)
+	if not onScreen then
+		return false
+	end
+	local origin = camera.CFrame.Position
+	local hit = Workspace:Raycast(origin, target - origin, rayParams)
+	return not (hit ~= nil and (hit.Position - origin).Magnitude < (target - origin).Magnitude - 4)
+end
+
+-- Doğma noktası uygun mu? (uzaksa ya da ekran dışında / bir binanın arkasındaysa doğabilir)
 local function canSpawn(visibleMin: number)
 	return function(x: number, y: number, z: number, dist: number): boolean
 		if dist >= visibleMin then
 			return true
 		end
-		local camera = Workspace.CurrentCamera
-		if not camera then
-			return true
-		end
-		local target = Vector3.new(x, y + 2.5, z)
-		local _, onScreen = camera:WorldToViewportPoint(target)
-		if not onScreen then
-			return true
-		end
-		local origin = camera.CFrame.Position
-		local hit = Workspace:Raycast(origin, target - origin, rayParams)
-		return hit ~= nil and (hit.Position - origin).Magnitude < (target - origin).Magnitude - 4
+		return not isVisible(x, y, z, dist)
 	end
+end
+
+-- Bölge türüne göre araç karışımı (AmbientConfig.Traffic.DistrictMix)
+local function mixAt(x: number, z: number)
+	local d = MapDefinitions.GetDistrictAt(Vector3.new(x, 0, z))
+	return d and TCFG.DistrictMix and TCFG.DistrictMix[d.Type] or nil
 end
 
 local function vehicleModelOf(seat: Instance?): Model?
@@ -176,7 +245,8 @@ local function gatherObstacles(focus: Vector3)
 				end
 			else
 				local p = root.Position
-				table.insert(forTraffic, { X = p.X, Y = p.Y - 2, Z = p.Z, R = R.Player, Kind = "Player" })
+				local vel = root.AssemblyLinearVelocity -- yola doğru yürüyen oyuncu önceden görülsün
+				table.insert(forTraffic, { X = p.X, Y = p.Y - 2, Z = p.Z, R = R.Player, Kind = "Player", VX = vel.X, VZ = vel.Z })
 				table.insert(forPeds, { X = p.X, Z = p.Z, R = 2, Kind = "Player" })
 			end
 		end
@@ -197,7 +267,10 @@ local function gatherObstacles(focus: Vector3)
 	end
 	for _, p in peds.Peds do
 		if p.State == "Geç" or (p.Link and p.Link.Crossing) then
-			table.insert(forTraffic, { X = p.X, Y = p.Y, Z = p.Z, R = R.Pedestrian, Kind = "Pedestrian" })
+			local spd = p.CurSpeed or 0
+			table.insert(forTraffic, {
+				X = p.X, Y = p.Y, Z = p.Z, R = R.Pedestrian, Kind = "Pedestrian", VX = (p.HX or 0) * spd, VZ = (p.HZ or 0) * spd,
+			})
 		end
 	end
 	return forTraffic, forPeds
@@ -207,7 +280,8 @@ end
 local function syncModels()
 	for _, v in traffic.Spawned do
 		if not v.Removed and not vehicleModels[v] then
-			vehicleModels[v] = TrafficRenderer.Acquire(v.Kind.Id, lightsOn)
+			local mix = mixAt(v.X, v.Z)
+			vehicleModels[v] = TrafficRenderer.Acquire(v.Kind.Id, lightsOn, mix and mix.Taxi)
 			v.PX, v.PY, v.PZ, v.PHX, v.PHZ = v.X, v.Y, v.Z, v.HX, v.HZ
 		end
 	end
@@ -222,7 +296,7 @@ local function syncModels()
 		if not p.Removed and not pedModels[p] then
 			pedModels[p] = PedRenderer.Acquire()
 			p.PX, p.PY, p.PZ, p.PHX, p.PHZ = p.X, p.Y, p.Z, p.HX, p.HZ
-			p.AnimPhase = math.random() * math.pi * 2
+			p.Anim = PedAnim.new(p.Seed or math.random())
 		end
 	end
 	for _, p in peds.Despawned do
@@ -247,6 +321,7 @@ local function clearAll()
 	syncModels()
 	traffic.Despawned, peds.Despawned = {}, {}
 	SignalRenderer.Update(graph, nil, 0, 0)
+	DoorRenderer.Update(nil, 0)
 end
 
 -- ===== Kaza: oyuncunun aracı NPC araca/yayaya çarparsa NPC fiziğe geçer (bu istemcide), sonra havuza döner =====
@@ -326,10 +401,12 @@ local function statsText(focus: Vector3, time: number, hour: number, tDensity: n
 	end
 	local lines = {
 		string.format("TRAFİK  araç %d/%d (havuz %d)   yaya %d/%d (havuz %d)", #traffic.Vehicles, limit("Vehicles"), TrafficRenderer.PoolCount(), #peds.Peds, limit("Pedestrians"), PedRenderer.PoolCount()),
-		string.format("adım  trafik %.2f ms   yaya %.2f ms (10 Hz, ort.)", costTraffic * 1000, costPeds * 1000),
+		string.format("cihaz %s  yoğunluk %s  kalite %%%d  FPS %.0f", deviceClass(), densityPreset(), math.round(quality * 100), 1 / frameDt),
+		string.format("adım  trafik %.2f ms   yaya %.2f ms (%d Hz, ort.)", costTraffic * 1000, costPeds * 1000, AmbientConfig.SimRate),
 		string.format("araç  doğan %d  kalkan %d  reddedilen %d", ts.Spawns, ts.Despawns, ts.Rejected),
-		string.format("kavşak geçişi %d  şerit değiştirme %d  tıkalı>10sn %d", ts.Entries, ts.LaneChanges, stuck),
+		string.format("kavşak geçişi %d  şerit değiştirme %d  yön değiştirme %d  kilit %d  tıkalı>10sn %d", ts.Entries, ts.LaneChanges, ts.Reroutes or 0, ts.Locked or 0, stuck),
 		string.format("yaya  doğan %d  geçiş %d  vazgeçen %d  yol yok %d", pst.Spawns, pst.Crossings, pst.GaveUp, pst.PathFail),
+		string.format("bina  giren %d  çıkan %d  kapı hedefi %d  kapı modeli %d", pst.Entered or 0, pst.Exited or 0, pst.DoorGoals or 0, DoorRenderer.ActiveCount()),
 		string.format("ışık direği %d   kaza modeli %d", SignalRenderer.ActiveCount(), #wrecks),
 		string.format("saat %02d:%02d  yoğunluk trafik %.2f  yaya %.2f", math.floor(hour), math.floor(hour % 1 * 60), tDensity, pDensity),
 	}
@@ -381,6 +458,8 @@ local function simStep()
 	traffic:Step(SIM_DT, {
 		Time = time, Focus = foci, Obstacles = forTraffic, MaxVehicles = limit("Vehicles"), Density = tDensity,
 		CanSpawn = canSpawn(TCFG.SpawnVisibleMin),
+		IsVisible = isVisible,
+		MixAt = mixAt,
 		DensityAt = function(x, z)
 			return districtDensity(x, z, hour) * 1.25 + 0.1
 		end,
@@ -389,6 +468,7 @@ local function simStep()
 	peds:Step(SIM_DT, {
 		Time = time, Hour = hour, Focus = foci, Obstacles = forPeds, MaxPeds = limit("Pedestrians"), Density = pDensity,
 		CanSpawn = canSpawn(PCFG.SpawnVisibleMin),
+		IsVisible = isVisible,
 		DensityAt = function(x, z)
 			return districtDensity(x, z, hour) * 1.2
 		end,
@@ -412,6 +492,7 @@ local function simStep()
 		lastSignals = now
 		SignalRenderer.Update(graph, focus, time, 320)
 	end
+	DoorRenderer.Update(focus, peds.Time) -- yakındaki kapılar (havuzlu), yaya giriş/çıkışında açılır
 	if debugOn and now - lastDebug > AmbientConfig.Debug.RefreshInterval then
 		lastDebug = now
 		AmbientDebug.Update({
@@ -422,12 +503,17 @@ local function simStep()
 	end
 end
 
+local FAR_RENDER2 = 260 * 260 -- bundan uzaktaki araçlar iki karede bir konumlanır (görünmez fark, yarı maliyet)
+
 local function render(dt: number, alpha: number)
 	local camera = Workspace.CurrentCamera
 	local camPos = camera and camera.CFrame.Position or Vector3.zero
+	frameNo += 1
 	for v, model in vehicleModels do
 		local root = model.PrimaryPart
-		if root then
+		local cdx, cdz = v.X - camPos.X, v.Z - camPos.Z
+		local far = cdx * cdx + cdz * cdz > FAR_RENDER2
+		if root and not (far and (frameNo + v.Id) % 2 == 1) then
 			local x = v.PX + (v.X - v.PX) * alpha
 			local y = v.PY + (v.Y - v.PY) * alpha
 			local z = v.PZ + (v.Z - v.PZ) * alpha
@@ -445,8 +531,15 @@ local function render(dt: number, alpha: number)
 			end
 		end
 	end
+	DoorRenderer.Animate(dt)
 	local animR2 = PCFG.AnimateRadius * PCFG.AnimateRadius
+	local fullAnimR2 = (PCFG.FullAnimateRadius or 45) ^ 2
 	for p, model in pedModels do
+		local cdx, cdz = p.X - camPos.X, p.Z - camPos.Z
+		local cd2 = cdx * cdx + cdz * cdz
+		if cd2 > 14400 and (frameNo + p.Id) % 2 == 1 then
+			continue -- 120 studdan uzak yaya iki karede bir konumlanır
+		end
 		local x = p.PX + (p.X - p.PX) * alpha
 		local y = p.PY + (p.Y - p.PY) * alpha
 		local z = p.PZ + (p.Z - p.PZ) * alpha
@@ -456,11 +549,35 @@ local function render(dt: number, alpha: number)
 			hx, hz = p.HX, p.HZ
 		end
 		PedRenderer.Place(model, Vector3.new(x, y, z), hx, hz)
-		local dx, dz = x - camPos.X, z - camPos.Z
-		if dx * dx + dz * dz < animR2 then
-			local moving = if p.State == "Yürü" or p.State == "Geç" then (p.Moving or 1) else 0
-			p.AnimPhase = (p.AnimPhase or 0) + dt * p.Speed * 1.7 * moving
-			PedRenderer.Animate(model, p.AnimPhase, math.min(moving * 1.2, 1))
+		PedRenderer.SetFade(model, p.Fade or 0)
+		-- animasyon LOD: 45 stud içinde her kare, 90'a kadar iki karede bir (dt birikir), ötesinde duruş pozu
+		local anim = p.Anim
+		if anim and cd2 < animR2 then
+			p.AnimDt = (p.AnimDt or 0) + dt
+			if cd2 < fullAnimR2 or (frameNo + p.Id) % 2 == 0 then
+				local adt = math.min(p.AnimDt, 0.1)
+				p.AnimDt = 0
+				-- dönüş hızı (görüntülenen yönden) ve kapı itme
+				local lastH = p.AnimHX
+				local turn = 0
+				if lastH then
+					local cross = lastH * hz - (p.AnimHZ or 0) * hx
+					local dot = lastH * hx + (p.AnimHZ or 0) * hz
+					turn = -math.atan2(cross, dot) / math.max(adt, 1e-3)
+				end
+				p.AnimHX, p.AnimHZ = hx, hz
+				-- kapıyı itme: girmeden hemen önce ve girerken, çıkarken ilk yarım saniye
+				local atDoor = p.State == "Kapı" and (p.Timer or 1) < 0.6
+				local inDoor = p.State == "Gir" or (p.State == "Çık" and (p.Timer or 0) < 0.6)
+				local reach = if atDoor or inDoor then 1 else 0
+				local k = PedRenderer.Scale(model)
+				local pose = PedAnim.Step(anim, adt, (p.CurSpeed or 0) / k, turn, reach)
+				PedRenderer.Pose(model, pose)
+				p.Posed = true
+			end
+		elseif p.Posed then
+			p.Posed = false
+			PedRenderer.Neutral(model)
 		end
 	end
 end
@@ -478,6 +595,7 @@ local function onHeartbeat(dt: number)
 		return
 	end
 	active = true
+	updateQuality(dt)
 	accumulator += dt
 	if accumulator > SIM_DT * 3 then
 		accumulator = SIM_DT -- uzun takılmadan sonra yetişmeye çalışma (tek adım)
@@ -520,16 +638,23 @@ function AmbientController:Start()
 			end,
 		})
 		pedGraph = PedGraph.Build(data, graph)
+		-- bina kapıları (arsa verisinden; harita değişmez): kaldırımı kapı noktalarında böler, kapı düğümleri ekler
+		pedGraph.Entrances = Entrances.Build(data, pedGraph, PedGraph, graph, {
+			Yield = function()
+				task.wait()
+			end,
+		})
 		traffic = TrafficSim.new(graph, TCFG, kinds, TrafficGraph, os.clock() * 1000)
 		peds = PedSim.new(pedGraph, graph, traffic, PCFG, PedGraph, TrafficGraph, os.clock() * 777)
 		TrafficRenderer.Init()
 		PedRenderer.Init()
 		SignalRenderer.Init(graph, TrafficGraph)
 		local laneCount, connCount, walkCount = #graph.Lanes, #graph.Connectors, #pedGraph.Links
+		DoorRenderer.Init(pedGraph.Entrances)
 		ready = true
 		AmbientController._updateRayFilter()
-		Log.Info(string.format("Trafik/yaya hazır: %d şerit, %d kavşak bağlantısı, %d kaldırım bağlantısı (%.0f ms)",
-			laneCount, connCount, walkCount, (os.clock() - t0) * 1000))
+		Log.Info(string.format("Trafik/yaya hazır: %d şerit, %d kavşak bağlantısı, %d kaldırım bağlantısı, %d bina kapısı (%.0f ms)",
+			laneCount, connCount, walkCount, #pedGraph.Entrances.List, (os.clock() - t0) * 1000))
 		if walkCount == 0 then
 			Log.Warn("Kaldırım grafiği boş: haritada kaldırım verisi okunamadı → yaya doğmaz (MapDefinitions kaldırım bayrağı).")
 		end

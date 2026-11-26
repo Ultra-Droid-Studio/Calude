@@ -16,7 +16,7 @@ def load(lua, path="src/ReplicatedStorage/Shared/MapData.lua", correct_sidewalks
         return T({"X": x, "Y": y, "Z": z})
 
     nodes, node_list, edges, edge_list = {}, [], {}, []
-    pois, props, districts = [], [], []
+    pois, props, districts, lots = [], [], [], []
     meta = None
     for l in lines:
         f = l.split("|")
@@ -38,6 +38,12 @@ def load(lua, path="src/ReplicatedStorage/Shared/MapData.lua", correct_sidewalks
             edge_list.append(e)
         elif t == "P":
             pois.append(dict(Id=f[1], Type=f[2], Name=f[3], Entrance=P(float(f[6]), 0, float(f[7])), District=f[8]))
+        elif t == "L":
+            # L|id|district|style|use|cx|cz|w|d|rot|h|seed|poi|baseY  (MapDefinitions ile aynı alanlar)
+            lots.append(dict(Id=int(f[1]), District=f[2], Style=f[3], Use=f[4], Center=P(float(f[5]), 0, float(f[6])),
+                             Width=float(f[7]), Depth=float(f[8]), Rotation=float(f[9]), Height=float(f[10]),
+                             Seed=float(f[11]), PoiId=(f[12] if len(f) > 12 and f[12] != "" else None),
+                             BaseY=float(f[13]) if len(f) > 13 and f[13] != "" else 0.0))
         elif t == "X":
             props.append(dict(Kind=f[1], X=float(f[2]), Z=float(f[3]), Yaw=float(f[4]), Y=float(f[5])))
         elif t == "D":
@@ -63,6 +69,6 @@ def load(lua, path="src/ReplicatedStorage/Shared/MapData.lua", correct_sidewalks
     data = T({
         "Meta": T(meta), "Nodes": T(lnodes), "NodeList": T(lnode_list), "Edges": T(ledges), "EdgeList": T(ledge_list),
         "POIs": T([T(p) for p in pois]), "Props": T([T(p) for p in props]),
-        "Districts": T([T(d) for d in districts]),
+        "Districts": T([T(d) for d in districts]), "Lots": T([T(l) for l in lots]),
     })
-    return data, dict(nodes=nodes, edges=edges, meta=meta, pois=pois, props=props, districts=districts)
+    return data, dict(nodes=nodes, edges=edges, meta=meta, pois=pois, props=props, districts=districts, lots=lots)

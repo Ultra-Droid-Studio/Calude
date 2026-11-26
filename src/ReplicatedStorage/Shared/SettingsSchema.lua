@@ -21,6 +21,8 @@ SettingsSchema.Definitions = {
 	{ Key = "VisualEffects", Category = "Graphics", Type = "boolean", Default = true },
 	{ Key = "Shadows", Category = "Graphics", Type = "boolean", Default = true },
 	{ Key = "ReduceMotion", Category = "Graphics", Type = "boolean", Default = false },
+	-- Yaşayan Şehir: NPC araç/yaya bütçesi (AmbientController; cihaz sınıfına göre AmbientConfig'teki sayılar)
+	{ Key = "CityDensity", Category = "Graphics", Type = "enum", Options = { "Low", "Normal", "High" }, Default = "Normal" },
 
 	-- ===== Kamera (CameraController her karede okur) =====
 	{ Key = "CameraMode", Category = "Camera", Type = "enum", Options = Constants.PlayerSelectableCameraModes, Default = "ThirdPerson" },
