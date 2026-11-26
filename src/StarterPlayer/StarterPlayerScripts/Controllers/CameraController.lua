@@ -14,6 +14,7 @@
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
+local GuiService = game:GetService("GuiService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
@@ -298,12 +299,62 @@ local function applyLookInput(dt: number, profile)
 	targetPitch = math.clamp(targetPitch, profile.MinPitch * DEG, profile.MaxPitch * DEG)
 end
 
+-- Dokunuş Roblox'un hareket joystick'i üstünde mi başladı? (PlayerGui.TouchGui.TouchControlFrame)
+-- Roblox'un DİNAMİK joystick'i dokunuşu "işlenmiş" (processed) olarak işaretlemez; Roblox kendi kamerasında
+-- (PlayerModule/CameraInput) joystick alanında başlayan parmağı ayrıca hariç tutar. Kamerayı biz yazdığımız için
+-- aynı kontrol burada: joystick parmağı kamerayı çevirmez, yürürken ikinci parmakla kamera sürüklenebilir.
+-- Klasik joystick de dahil; sadece joystick katmanı açık ve görünürken (araçta Roblox kontrolleri kapalıdır).
+local THUMBSTICK_FRAMES = { "DynamicThumbstickFrame", "ThumbstickFrame" }
+local function isGuiShown(gui: GuiObject): boolean
+	local node: Instance? = gui
+	while node and node:IsA("GuiObject") do
+		if not (node :: GuiObject).Visible then
+			return false
+		end
+		node = node.Parent
+	end
+	return true
+end
+local function isOverThumbstick(position: Vector3): boolean
+	if not GuiService.TouchControlsEnabled then
+		return false
+	end
+	local playerGui = player:FindFirstChildOfClass("PlayerGui")
+	local touchGui = playerGui and playerGui:FindFirstChild("TouchGui")
+	if not touchGui or not touchGui:IsA("ScreenGui") or not touchGui.Enabled then
+		return false
+	end
+	local touchFrame = touchGui:FindFirstChild("TouchControlFrame")
+	if not touchFrame then
+		return false
+	end
+	for _, name in THUMBSTICK_FRAMES do
+		local frame = touchFrame:FindFirstChild(name)
+		if frame and frame:IsA("GuiObject") and isGuiShown(frame) then
+			local topLeft = frame.AbsolutePosition
+			local bottomRight = topLeft + frame.AbsoluteSize
+			if position.X >= topLeft.X and position.Y >= topLeft.Y and position.X <= bottomRight.X and position.Y <= bottomRight.Y then
+				return true
+			end
+		end
+	end
+	return false
+end
+
+local function countCameraTouches(): number
+	local count = 0
+	for _ in cameraTouches do
+		count += 1
+	end
+	return count
+end
+
 local function connectInput()
 	UserInputService.InputBegan:Connect(function(input, processed)
 		if input.UserInputType == Enum.UserInputType.MouseButton2 and not processed then
 			rightMouseHeld = true
-		elseif input.UserInputType == Enum.UserInputType.Touch and not processed then
-			-- Joystick ve butonlar "processed" gelir; boş ekran dokunuşları kamerayı çevirir
+		elseif input.UserInputType == Enum.UserInputType.Touch and not processed and not isOverThumbstick(input.Position) then
+			-- Butonlar "processed" gelir; Roblox joystick'i gelmez, onu alanından tanırız. Kalan dokunuşlar kamerayı çevirir.
 			cameraTouches[input] = true
 		end
 	end)
@@ -320,11 +371,7 @@ local function connectInput()
 		if input.UserInputType == Enum.UserInputType.Touch then
 			if cameraTouches[input] then
 				-- İki parmak aynı anda kameradaysa pinch işler, çevirme yapma
-				local count = 0
-				for _ in cameraTouches do
-					count += 1
-				end
-				if count == 1 then
+				if countCameraTouches() == 1 then
 					pendingTouchDelta += Vector2.new(input.Delta.X, input.Delta.Y)
 				end
 			end
@@ -346,11 +393,15 @@ local function connectInput()
 		end
 	end)
 	UserInputService.TouchPinch:Connect(function(_, scale, _, state, processed)
-		if processed then
+		-- Yakınlaştırma sadece iki parmak da kamera alanındayken (joystick parmağı + kamera parmağı pinch sayılmaz)
+		if processed or (state ~= Enum.UserInputState.End and countCameraTouches() < 2) then
+			lastPinchScale = nil
 			return
 		end
 		if state == Enum.UserInputState.Begin then
 			lastPinchScale = scale
+		elseif state == Enum.UserInputState.Change and not lastPinchScale then
+			lastPinchScale = scale -- ikinci kamera parmağı pinch başladıktan sonra kaydedildiyse buradan başla
 		elseif state == Enum.UserInputState.Change and lastPinchScale then
 			local mode = currentMode
 			if mode and isFollowMode(mode) then
