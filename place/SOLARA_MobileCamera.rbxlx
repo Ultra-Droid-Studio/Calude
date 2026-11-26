@@ -22089,10 +22089,9 @@ local function connectInput()
 			lastPinchScale = nil
 			return
 		end
-		if state == Enum.UserInputState.Begin then
+		-- Başlangıçta ya da (ikinci kamera parmağı pinch başladıktan sonra kaydedildiyse) ilk değişimde başla
+		if state == Enum.UserInputState.Begin or (state == Enum.UserInputState.Change and not lastPinchScale) then
 			lastPinchScale = scale
-		elseif state == Enum.UserInputState.Change and not lastPinchScale then
-			lastPinchScale = scale -- ikinci kamera parmağı pinch başladıktan sonra kaydedildiyse buradan başla
 		elseif state == Enum.UserInputState.Change and lastPinchScale then
 			local mode = currentMode
 			if mode and isFollowMode(mode) then
