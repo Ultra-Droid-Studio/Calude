@@ -2,8 +2,11 @@
 --
 -- Yerleşim DrivingLayout'tan: masaüstü sol alt (harita) + hemen üstünde yönlendirme; dokunmatik sol üst +
 -- altında yönlendirme. Sürüş HUD'u ve mobil butonlar aynı hesaptan beslendiği için çakışmazlar.
--- Harita kuzey-yukarıdır; oyuncu oku ortada sabit, yönü döner. Kare başına yazılan: harita konumu, ok açısı.
--- Yakınlaştırma yürürken sabit, araçta hızla açılır (≈300 → ≈800 stud yarıçap).
+-- Harita kuzey-yukarıdır; oyuncu oku ortada sabit, yönü döner. Her karede hesaplanır ama özellik sadece değişince
+-- yazılır: harita konumu tam piksel değişince, ok açısı 0.5° değişince (GPS/harita kararlılık düzeltmesi).
+-- Yakınlaştırma yürürken sabit, araçta YATAY hızla açılır (≈300 → ≈800 stud yarıçap). Uygulanan yakınlık %2.5'lik
+-- adımlarla değişir (MapView.ZoomStep): binlerce harita parçası her karede yeniden yerleşmez; konum her zaman
+-- uygulanan ölçekle hesaplandığı için bu adımlar konum hatası yaratmaz.
 -- Sadece oyun sırasında görünür (ana menüde gizli). Dokununca/tıklayınca tam harita açılır.
 
 local Players = game:GetService("Players")
@@ -12,6 +15,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Modules = ReplicatedStorage:WaitForChild("Modules")
 local DrivingLayout = require(Modules:WaitForChild("DrivingLayout"))
+local MapView = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("MapView"))
 
 local FrontEnd = script.Parent.Parent:WaitForChild("FrontEnd")
 local Theme = require(FrontEnd:WaitForChild("Theme"))
@@ -31,6 +35,8 @@ local SCALE_ON_FOOT = 0.34 -- piksel/stud (temel boyutlu harita için; harita bo
 local SCALE_SLOW = 0.22
 local SCALE_FAST = 0.12
 local REFERENCE_SIZE = 200 -- yukarıdaki ölçekler bu piksel çaplı harita içindir
+local ZOOM_STEP = 0.025 -- uygulanan yakınlık hedeften bu oran kadar uzaklaşınca güncellenir
+local ARROW_STEP = 0.5 -- derece: okun açısı bundan küçük değişimde yeniden yazılmaz
 
 local gui: ScreenGui
 local root: Frame
@@ -44,9 +50,11 @@ local guideIcon: Frame
 local guideDistance: TextLabel
 local guideText: TextLabel
 local guideSub: TextLabel
-local currentScale = SCALE_ON_FOOT
-local accumulator = 0
+local currentScale = SCALE_ON_FOOT -- yumuşak hedef yakınlık
+local appliedScale = nil -- tuvale uygulanan yakınlık (ZOOM_STEP adımlı)
+local arrowHeading = nil
 local guideAccumulator = 0
+local lastWarnAt = -100
 
 local function new(className: string, props: { [string]: any }): any
 	local inst = Instance.new(className)
@@ -252,23 +260,34 @@ local function step(dt: number)
 		return
 	end
 	local navigation = controllers.NavigationController
+	-- Tek konum kaynağı: araçtaysa aracın şasisi (kök parça), değilse karakterin kökü. Tam harita ve GPS de bunu okur.
 	local subject = navigation:GetSubject()
 	if not subject then
 		return
 	end
-	-- Yakınlaştırma: yürürken sabit; araçta hızla uzaklaş
+	-- Yakınlaştırma: yürürken sabit; araçta yatay hızla uzaklaş (yol sarsıntısındaki dikey hız yakınlığı oynatmaz)
 	local target = SCALE_ON_FOOT
 	local vehicle = controllers.VehicleController:GetCurrent()
 	if vehicle then
-		local speedFrac = math.clamp(subject.AssemblyLinearVelocity.Magnitude / math.max(vehicle.Def.MaxSpeed, 1), 0, 1)
+		local v = subject.AssemblyLinearVelocity
+		local planar = math.sqrt(v.X * v.X + v.Z * v.Z)
+		local speedFrac = math.clamp(planar / math.max(vehicle.Def.MaxSpeed, 1), 0, 1)
 		target = SCALE_SLOW + (SCALE_FAST - SCALE_SLOW) * speedFrac
 	end
 	currentScale += (target - currentScale) * math.clamp(dt * 1.5, 0, 1)
+	appliedScale = MapView.ZoomStep(appliedScale, currentScale, ZOOM_STEP)
 	local size = clip.AbsoluteSize
-	local scale = currentScale * (size.X / REFERENCE_SIZE)
+	if size.X < 1 or size.Y < 1 then
+		return -- yerleşim henüz yok
+	end
+	local scale = appliedScale * (size.X / REFERENCE_SIZE)
 	local position = subject.Position
 	canvas:SetView(position.X, position.Z, scale, size)
-	arrow.Rotation = navigation:GetHeading()
+	local heading = navigation:GetHeading()
+	if arrowHeading == nil or math.abs(MapView.AngleDelta(heading, arrowHeading)) >= ARROW_STEP then
+		arrowHeading = heading
+		arrow.Rotation = heading
+	end
 end
 
 function MinimapController:Init(allControllers)
@@ -298,15 +317,14 @@ function MinimapController:Start()
 		updateGuidance()
 	end)
 
+	-- Her karede (kamera ile aynı karede): eskiden 30 Hz ve düzensiz (2-3 karede bir) güncelleniyordu.
+	-- Yazma işi sadece değişimde olduğu için kare başına maliyet birkaç aritmetik işlemdir.
 	RunService.RenderStepped:Connect(function(dt)
-		accumulator += dt
 		guideAccumulator += dt
-		if accumulator >= 1 / 30 then
-			local ok, err = pcall(step, accumulator)
-			accumulator = 0
-			if not ok then
-				warn("[Minimap]", err)
-			end
+		local ok, err = pcall(step, dt)
+		if not ok and os.clock() - lastWarnAt > 5 then
+			lastWarnAt = os.clock() -- her karede uyarı basma
+			warn("[Minimap]", err)
 		end
 		if guideAccumulator >= 0.2 then
 			guideAccumulator = 0

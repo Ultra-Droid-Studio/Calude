@@ -13,6 +13,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local MapDefinitions = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("MapDefinitions"))
+local MapView = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("MapView"))
 local FrontEnd = script.Parent.Parent
 local Theme = require(FrontEnd:WaitForChild("Theme"))
 local Strings = require(FrontEnd:WaitForChild("Strings"))
@@ -115,8 +116,10 @@ function MapCanvas.new(parent: GuiObject, opts)
 	local half = data.Meta.HalfSize
 	self.Half = half
 	self.Detail = opts.Detail or "Mini"
-	self.Scale = -1
-	self.TileRange = ""
+	self.Scale = -1 -- tuvale uygulanan ölçek (UIScale ile her zaman aynı)
+	self.IconScale = -1 -- sabit piksel boyutlu öğelerin en son boyutlandığı ölçek
+	self.OffsetX, self.OffsetY = nil, nil
+	self.TileX0, self.TileX1, self.TileZ0, self.TileZ1 = nil, nil, nil, nil
 	self.Tiles = {}
 	self.FixedIcons = {} -- { Gui, PixelSize } sabit piksel boyutlu öğeler
 	self.RouteSegments = {}
@@ -304,11 +307,23 @@ function MapCanvas.MakeArrow(parent: Instance, zIndex: number): Frame
 end
 
 -- Görünüm: dünya merkezi (cx, cz), ölçek (piksel/stud), görüntü alanı (ebeveyn biriminde)
+-- GPS/harita kararlılık düzeltmesi: UIScale ve kök konumu HER ZAMAN aynı ölçekle (bu çağrının ölçeğiyle) yazılır.
+-- Eskiden UIScale sadece %1 değişimde güncellenip konum yeni ölçekle hesaplanıyordu → araçta harita merkezi
+-- oyuncudan kayıp geri zıplıyordu. Pahalı yakınlık adımlarını seyreltmek çağıranın işidir (MapView.ZoomStep).
+-- Özellikler sadece değişince yazılır.
 function MapCanvas:SetView(cx: number, cz: number, scale: number, viewport: Vector2)
+	if scale <= 0 then
+		return
+	end
 	local half = self.Half
-	if math.abs(scale - self.Scale) > self.Scale * 0.01 then
+	if scale ~= self.Scale then
 		self.Scale = scale
 		self.UIScale.Scale = scale
+	end
+	-- Sabit piksel boyutlu öğeler (simgeler, rota kalınlığı): %1'lik boyut farkı görünmez, sadece daha büyük
+	-- değişimde yeniden boyutlandır (konumu etkilemez).
+	if math.abs(scale - self.IconScale) > self.IconScale * 0.01 then
+		self.IconScale = scale
 		for _, item in self.FixedIcons do
 			item.Gui.Size = UDim2.fromOffset(item.Pixels / scale, item.Pixels / scale)
 		end
@@ -324,14 +339,17 @@ function MapCanvas:SetView(cx: number, cz: number, scale: number, viewport: Vect
 		end
 	end
 	self.ViewX, self.ViewZ, self.Viewport = cx, cz, viewport
-	self.Root.Position = UDim2.fromOffset(viewport.X / 2 - (cx + half) * scale, viewport.Y / 2 - (cz + half) * scale)
+	local ox, oy = MapView.RootOffset(cx, cz, scale, viewport.X, viewport.Y, half)
+	if ox ~= self.OffsetX or oy ~= self.OffsetY then
+		self.OffsetX, self.OffsetY = ox, oy
+		self.Root.Position = UDim2.fromOffset(ox, oy)
+	end
 	-- Karo görünürlüğü: sadece aralık değişince
 	local halfW, halfH = viewport.X / 2 / scale + 200, viewport.Y / 2 / scale + 200
 	local tx0, tx1 = math.floor((cx - halfW + half) / TILE), math.floor((cx + halfW + half) / TILE)
 	local tz0, tz1 = math.floor((cz - halfH + half) / TILE), math.floor((cz + halfH + half) / TILE)
-	local key = tx0 .. ":" .. tx1 .. ":" .. tz0 .. ":" .. tz1
-	if key ~= self.TileRange then
-		self.TileRange = key
+	if tx0 ~= self.TileX0 or tx1 ~= self.TileX1 or tz0 ~= self.TileZ0 or tz1 ~= self.TileZ1 then
+		self.TileX0, self.TileX1, self.TileZ0, self.TileZ1 = tx0, tx1, tz0, tz1
 		for _, tile in self.Tiles do
 			local tx, tz = tile:GetAttribute("TX"), tile:GetAttribute("TZ")
 			tile.Visible = tx >= tx0 and tx <= tx1 and tz >= tz0 and tz <= tz1
@@ -376,7 +394,7 @@ function MapCanvas:SetRoute(route)
 		return
 	end
 	local half = self.Half
-	local scale = math.max(self.Scale, 0.01)
+	local scale = math.max(self.IconScale, 0.01) -- SetView'in yeniden boyutlandırma ölçeğiyle aynı
 	local thickness = (if self.Detail == "Full" then 5 else 4) / scale
 	local function segment(a, b, color: Color3, weight: number, transparency: number)
 		local dx, dz = b.X - a.X, b.Z - a.Z

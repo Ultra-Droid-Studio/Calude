@@ -11,6 +11,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local MapDefinitions = require(Shared.MapDefinitions)
 local Navigation = require(Shared:WaitForChild("Navigation"))
+local MapView = require(Shared:WaitForChild("MapView"))
 local Signal = require(Shared.Utilities.Signal)
 local Log = require(Shared.Utilities.Log).new("Navigation")
 
@@ -47,14 +48,18 @@ function NavigationController:GetSubject(): BasePart?
 	return controllers.CharacterController:GetRootPart()
 end
 
--- Kuzey = 0°, doğu (+X) = 90° (haritada saat yönü)
+-- Kuzey = 0°, doğu (+X) = 90° (haritada saat yönü). Konumla aynı kaynaktan (GetSubject). Bakış yatay düzleme
+-- izdüşürülür; araç dikleşmiş/devrilmişse (yatay bileşen < 0.3) son geçerli yön korunur — eskiden ok rastgele
+-- yönlere dönüyordu. Yumuşatma yok: ok gerçek yönü gecikmesiz gösterir.
+local lastHeading = 0
 function NavigationController:GetHeading(): number
 	local subject = self:GetSubject()
 	if not subject then
-		return 0
+		return lastHeading
 	end
 	local look = subject.CFrame.LookVector
-	return math.deg(math.atan2(look.X, -look.Z))
+	lastHeading = MapView.Heading(look.X, look.Z, lastHeading)
+	return lastHeading
 end
 
 -- ===== Dünyadaki hedef işareti (sadece bu oyuncuda görünür: kameraya bağlı parça) =====

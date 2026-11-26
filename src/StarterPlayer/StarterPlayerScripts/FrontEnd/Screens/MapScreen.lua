@@ -84,8 +84,12 @@ function MapScreen.new(ctx)
 	self:_connectInput()
 	self._nav.RouteChanged:Connect(function()
 		self:_refreshCard()
-		if self._canvas then
+		if self._canvas and self._shown then
 			self._canvas:SetRoute(self._nav:GetRoute())
+		else
+			-- Harita kapalı: sürüşte her yeniden rotada gizli tuvaldeki rota parçalarını silip yeniden yaratma;
+			-- harita açılınca bir kez çizilir.
+			self._routeDirty = true
 		end
 	end)
 	self._nav.DestinationChanged:Connect(function(destination)
@@ -314,7 +318,11 @@ function MapScreen:OnShow()
 		self._canvas:SetRoute(self._nav:GetRoute())
 		local destination = self._nav:GetDestination()
 		self._canvas:SetDestination(destination and destination.Position)
+	elseif self._routeDirty then
+		self._canvas:SetRoute(self._nav:GetRoute())
 	end
+	self._routeDirty = false
+	self._shown = true
 	self._crosshair.Visible = not self._ctx.IsTouch()
 	self:_buildList()
 	self:_refreshCard()
@@ -332,6 +340,7 @@ function MapScreen:OnShow()
 end
 
 function MapScreen:OnHide()
+	self._shown = false
 	if self._render then
 		self._render:Disconnect()
 		self._render = nil
