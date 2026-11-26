@@ -70,8 +70,11 @@ aşama 2 sürümüyle karşılaştırılır:
 * [7] bina parçaları 10162 → 13550 (+%33); en büyük bina 48 parça (havaalanı pisti, değişmedi) — PASS
 * `test_businesses.py` PASS (173 işletme, 32 yeni haritada), `test_navigation.py` PASS (1708 rota).
 * Lint: önceki durumla aynı (1 hata + 4 uyarı, eski dosyalarda).
-* NPC/trafik testi (`test_ambient.py`): sonuç rapora eklenecek (aşama 2'de bulunan, önceden var olan nadir trafik
-  hataları burada da çıkabilir; trafik koduna dokunulmadı).
+* NPC/trafik testi (`test_ambient.py`, yaya bekleme noktası 91 → 95): kapılar 1278, yolda yaya 0, kırmızıda geçiş 0,
+  yaya çarpması 0; 2 FAIL: hareketli oyuncu senaryosunda 1 araç çakışması ve merkezde bekçinin 1 kilitlenmiş aracı
+  kaldırması. Bu aşamanın simülasyona tek etkisi 4 yeni bekleme noktası; trafik koduna dokunulmadı. Çakışma, aşama 2'de
+  işletmeler kapalıyken de görülen nadir trafik hatası sınıfında; kilitlenme bu seferki yeni belirti — ayrıca
+  incelenmedi (trafik düzeltmesi ayrı iş olarak bekliyor).
 
 ## Studio'da bakılacaklar
 1. Gündüz: Old Riverside, Costa Verano, Vista, Isla Coral sokaklarında tabelalar (4 biçim), yazılar okunuyor mu, yazı
