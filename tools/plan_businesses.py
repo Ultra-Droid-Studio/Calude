@@ -64,7 +64,40 @@ OTHER = {
     "music": ["Acorde Music", "Strings & Drums"],
     "sports": ["Deportes Faro", "Court & Coast"],
     "tattoo": ["Tinta Azul Tattoo", "Inkwave Studio"],
+    # Solara Centro ground floors (stage 3)
+    "fashion": ["Atelier Solara", "Linea Mar", "Moda Brisa", "Urban Palm", "Seda & Sal", "Northshore Apparel",
+                "Corte Fino", "Vela Fashion"],
+    "electronics": ["Voltio Electronics", "Pixelpoint", "Circuito", "Neon Tech", "Bayline Audio"],
+    "cosmetics": ["Belleza Sol", "Glow Theory", "Aroma & Piel", "Coral Cosmetics"],
+    "watches": ["Tempo Watches", "Reloj Real", "Hour & Tide"],
+    "bookcafe": ["Lectura Café", "Chapter One"],
+    "homegoods": ["Casa Clara Home", "Nido Interiors", "Loft & Linen"],
+    "kids": ["Pequeño Mundo", "Tiny Tides"],
+    "stationery": ["Papel & Tinta", "Inkwell Paper Co."],
 }
+# more names for the busy Centro ground floors
+CENTRO_EXTRA_NAMES = {
+    "fashion": ["Ola Denim", "Marea Studio", "Thread & Palm", "Riviera Wear"],
+    "electronics": ["Sonar Electronics", "Bitmart", "Kilowatt Corner"],
+    "cosmetics": ["Pétalo Beauty", "Lumina Skin"],
+    "jewelry": ["Oro Fino", "Azure Gems", "Caracol Jewelry"],
+    "shoes": ["Huella Shoes", "Stride Bay"],
+    "optics": ["Vista Clara Optics", "Focus Point"],
+    "travel": ["Rumbo Travel", "Bluewater Trips"],
+    "books": ["Libro Libre", "Margin Notes"],
+    "sports": ["Gol Sports", "Peak Gear"],
+    "salon": ["Studio Cabello", "Shear Bliss"],
+    "gallery": ["Galería Norte", "White Wall Gallery"],
+    "florist": ["Lirio Flowers", "Bloom Corner"],
+    "music": ["Ritmo Music", "Tempo Instruments"],
+    "photo": ["Click Solara", "Polar Photo"],
+    "phonerepair": ["iRepair Centro", "Pantalla Fix"],
+    "homegoods": ["Hogar Moderno", "Blanco Home"],
+    "kids": ["Mini Moda Kids"],
+    "stationery": ["Lápiz Azul"],
+    "watches": ["Segundo Watches"],
+}  # used only by the Centro step (4), so the stage-2 picks keep their names
+
 FONTS = {
     "bakery": ["Fondamento", "Kalam", "Merriweather", "PatrickHand"],
     "bakkal": ["DenkOne", "PatrickHand", "Highway", "Ubuntu"],
@@ -109,8 +142,9 @@ SIGN = {"bakery": "Awning", "bakkal": "Blade", "minimarket": "Box", "greengrocer
 MIN_DIST = {"bakery": 350, "bakkal": 300, "minimarket": 350, "greengrocer": 400, "pharmacy": 500, "restaurant": 200,
             "fastfood": 300, "diner": 300, "cafe": 200, "internetcafe": 600, "dollarstore": 500, "gunshop": 0}
 MAIN_STREET = {"pharmacy", "restaurant", "fastfood", "cafe", "internetcafe", "supermarket"}  # prefer avenues
-# New businesses per district (on storefront_plain lots). Centro has no free shop lots: its ground-floor shops
-# come with the facade stage (3).
+# New businesses per district (on storefront_plain lots). Centro has no free shop lots: its shops are ground-floor
+# units of the avenue-facing office / modern apartment buildings (stage 3, CENTRO_* below, processed last so the
+# stage-2 picks above stay the same).
 QUOTA = {
     "riverside": ["gunshop", "bakery", "bakkal", "greengrocer", "pharmacy", "internetcafe", "dollarstore", "bakery",
                   "bakkal", "cafe"],
@@ -130,6 +164,11 @@ DISTRICT_OTHER = {
               "shoes", "toys", "music", "boutique"],
     "drycreek": ["hardware", "barber", "laundry", "sports"],
 }
+CENTRO_STYLES = ("office", "apartment_modern")
+CENTRO_QUOTA = ["pharmacy", "internetcafe", "restaurant", "cafe"]
+CENTRO_OTHER = ["fashion", "electronics", "jewelry", "shoes", "optics", "cosmetics", "phonerepair", "travel", "watches",
+                "fashion", "books", "sports", "salon", "gallery", "bookcafe", "homegoods", "fashion", "electronics",
+                "florist", "kids", "stationery", "music", "photo", "fashion", "cosmetics", "electronics"]
 EXISTING_TYPE = {"convenience": "minimarket", "grocery": "greengrocer", "cafe": "cafe", "fastfood": "fastfood",
                  "supermarket": "supermarket", "general": "general"}
 IRONSIDE_EDGE = (-640.0, 880.0)  # Ironside's corner that faces Riverside
@@ -262,6 +301,41 @@ def main():
                             Font=font, Primary=c1, Secondary=c2, Sign="Box", Road=l["Road"], District=district,
                             X=l["X"], Z=l["Z"]))
 
+    # 4) Solara Centro: one ground-floor shop in every avenue-facing office / modern apartment building
+    centro = {lid: l for lid, l in lots.items() if l["District"] == "centro" and l["Style"] in CENTRO_STYLES}
+    for l in centro.values():
+        l["Road"] = road_kind(l, segs)
+    cands = [l for l in centro.values() if l["Road"] == "avenue"]
+    for t in CENTRO_QUOTA:
+        same = [b for b in out if b["Type"] == t]
+        placed = [b for b in out if b["District"] == "centro" and b.get("Unit")]
+        best, best_score = None, -1e18
+        for l in cands:
+            if any(math.hypot(l["X"] - b["X"], l["Z"] - b["Z"]) < MIN_DIST[t] for b in same):
+                continue
+            spread = min([math.hypot(l["X"] - b["X"], l["Z"] - b["Z"]) for b in placed] or [400.0])
+            score = min(spread, 400.0) / 400.0 - l["Id"] * 1e-7
+            if score > best_score:
+                best, best_score = l, score
+        if not best:
+            raise SystemExit(f"no centro lot for {t}")
+        cands.remove(best)
+        font, c1, c2 = brand(t, t)
+        out.append(dict(Lot=best["Id"], Poi=None, Type=t, Name=take_name(t, NAMES[t]), Map=True, Existing=False,
+                        Font=font, Primary=c1, Secondary=c2, Sign="Fascia", Road="avenue", District="centro",
+                        X=best["X"], Z=best["Z"], Unit="Ground"))
+    def centro_pool(k):
+        return OTHER.get(k, []) + CENTRO_EXTRA_NAMES.get(k, [])
+
+    for i, l in enumerate(sorted(cands, key=lambda l: (round(l["Z"] / 60), l["X"]))):
+        t = CENTRO_OTHER[i % len(CENTRO_OTHER)]
+        if all(n in used_names for n in centro_pool(t)):
+            t = next(k for k in CENTRO_OTHER + list(OTHER) if any(n not in used_names for n in centro_pool(k)))
+        font, c1, c2 = brand(t, "other")
+        out.append(dict(Lot=l["Id"], Poi=None, Type=t, Name=take_name("centro:" + t, centro_pool(t)), Map=False, Existing=False,
+                        Font=font, Primary=c1, Secondary=c2, Sign="Fascia", Road="avenue", District="centro",
+                        X=l["X"], Z=l["Z"], Unit="Ground"))
+
     out.sort(key=lambda b: b["Lot"])
 
     def rgb(c):
@@ -275,7 +349,8 @@ def main():
         "-- Elle düzenlenebilir (isim, tür, renk, yazı tipi); aracı yeniden çalıştırmak elle yapılan değişiklikleri siler.",
         "-- Lot = MapData arsa kimliği (harita değişmez). Poi = mevcut önemli yer (varsa). Map = haritada / GPS'te görünür.",
         "-- Type: Businesses.Types'taki tür. Font: Enum.Font adı. Primary/Secondary: tabela/tente ve ayrıntı rengi.",
-        "-- Sign: tabela biçimi (Box | Letters | Blade | Awning) — cephe aşamasında (3) kullanılacak.",
+        "-- Sign: tabela biçimi (Box | Letters | Blade | Awning | Fascia). Unit = \"Ground\": ofis/apartman binasının zemin",
+        "-- kat dükkânı (Solara Centro, aşama 3).",
         "return {",
     ]
     for b in out:
@@ -284,6 +359,8 @@ def main():
             fields.append(f"Poi = {lua_str(b['Poi'])}")
         fields += [f"Map = {'true' if b['Map'] else 'false'}", f"Font = {lua_str(b['Font'])}",
                    f"Primary = {rgb(b['Primary'])}", f"Secondary = {rgb(b['Secondary'])}", f"Sign = {lua_str(b['Sign'])}"]
+        if b.get("Unit"):
+            fields.append(f"Unit = {lua_str(b['Unit'])}")
         lines.append("\t{ " + ", ".join(fields) + " }, -- " + b["District"] + " / " + (b["Road"] or "?"))
     lines.append("}")
     open(OUT, "w", encoding="utf-8").write("\n".join(lines) + "\n")

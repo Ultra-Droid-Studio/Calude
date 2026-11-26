@@ -64,8 +64,14 @@ all_pois = list(data.POIs.values())
 # ---------------------------------------------------------------- [1]
 lot_ids = [b.Lot for b in businesses]
 check("[1] one business per lot", len(lot_ids) == len(set(lot_ids)), f"{len(lot_ids)} businesses")
-bad_style = [b.Lot for b in businesses if lots[b.Lot].Style not in ("storefront", "storefront_plain")]
-check("[1] businesses only on existing shop lots", not bad_style, str(bad_style[:5]))
+bad_style = [b.Lot for b in businesses if lots[b.Lot].Style not in ("storefront", "storefront_plain")
+             and not (b.Unit == "Ground" and lots[b.Lot].Style in plan.CENTRO_STYLES and lots[b.Lot].District == "centro")]
+check("[1] businesses only on existing shop lots (+ Centro ground floors of office / modern apartment buildings)",
+      not bad_style, str(bad_style[:5]))
+ground = [b for b in businesses if b.Unit == "Ground"]
+centro_avenue = [l for l in data.Lots.values() if l.District == "centro" and l.Style in plan.CENTRO_STYLES]
+check("[1] Centro: ground-floor shops only in Solara Centro", all(
+    lots[b.Lot].District == "centro" for b in ground), f"{len(ground)} ground-floor shops")
 plain = [l for l in data.Lots.values() if l.Style == "storefront_plain"]
 check("[1] every decorative shop lot has a business", all(l.Business is not None for l in plain), f"{len(plain)} lots")
 lines = open("src/ReplicatedStorage/Shared/BusinessData.lua", encoding="utf-8").read().count("\t{ Lot = ")
@@ -123,6 +129,9 @@ for i, a in enumerate(mapped):
             if new_pair and d < plan.MIN_DIST[a.Type]:
                 too_close.append(f"{a.Name}/{b.Name} {d:.0f}")
 check("[4] same-type minimum distance", not too_close, "; ".join(too_close[:4]))
+centro_types = sorted(b.Type for b in ground if b.Map)
+check("[4] Centro quota (pharmacy, internet café, restaurant, café on the map)",
+      centro_types == sorted(plan.CENTRO_QUOTA), str(centro_types))
 quota_bad = []
 for district, quota in plan.QUOTA.items():
     for t in set(quota):

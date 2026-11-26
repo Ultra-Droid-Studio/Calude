@@ -2,15 +2,62 @@
 -- Elle düzenlenebilir (isim, tür, renk, yazı tipi); aracı yeniden çalıştırmak elle yapılan değişiklikleri siler.
 -- Lot = MapData arsa kimliği (harita değişmez). Poi = mevcut önemli yer (varsa). Map = haritada / GPS'te görünür.
 -- Type: Businesses.Types'taki tür. Font: Enum.Font adı. Primary/Secondary: tabela/tente ve ayrıntı rengi.
--- Sign: tabela biçimi (Box | Letters | Blade | Awning) — cephe aşamasında (3) kullanılacak.
+-- Sign: tabela biçimi (Box | Letters | Blade | Awning | Fascia). Unit = "Ground": ofis/apartman binasının zemin
+-- kat dükkânı (Solara Centro, aşama 3).
 return {
+	{ Lot = 1, Type = "fashion", Name = "Atelier Solara", Map = false, Font = "Ubuntu", Primary = { 230, 120, 150 }, Secondary = { 255, 255, 255 }, Sign = "Fascia", Unit = "Ground" }, -- centro / avenue
+	{ Lot = 3, Type = "pharmacy", Name = "VitaPlus Pharmacy", Map = true, Font = "Roboto", Primary = { 80, 170, 90 }, Secondary = { 255, 255, 255 }, Sign = "Fascia", Unit = "Ground" }, -- centro / avenue
+	{ Lot = 6, Type = "sports", Name = "Gol Sports", Map = false, Font = "Kalam", Primary = { 120, 90, 170 }, Secondary = { 255, 230, 120 }, Sign = "Fascia", Unit = "Ground" }, -- centro / avenue
+	{ Lot = 8, Type = "salon", Name = "Studio Cabello", Map = false, Font = "Oswald", Primary = { 240, 160, 60 }, Secondary = { 40, 40, 50 }, Sign = "Fascia", Unit = "Ground" }, -- centro / avenue
+	{ Lot = 9, Type = "bookcafe", Name = "Lectura Café", Map = false, Font = "Merriweather", Primary = { 90, 160, 110 }, Secondary = { 255, 250, 240 }, Sign = "Fascia", Unit = "Ground" }, -- centro / avenue
+	{ Lot = 11, Type = "homegoods", Name = "Casa Clara Home", Map = false, Font = "Ubuntu", Primary = { 200, 70, 70 }, Secondary = { 250, 240, 220 }, Sign = "Fascia", Unit = "Ground" }, -- centro / avenue
+	{ Lot = 14, Type = "internetcafe", Name = "Pixel Lounge", Map = true, Font = "Sarpanch", Primary = { 40, 220, 200 }, Secondary = { 255, 70, 200 }, Sign = "Fascia", Unit = "Ground" }, -- centro / avenue
+	{ Lot = 16, Type = "florist", Name = "Lirio Flowers", Map = false, Font = "TitilliumWeb", Primary = { 230, 120, 150 }, Secondary = { 255, 255, 255 }, Sign = "Fascia", Unit = "Ground" }, -- centro / avenue
+	{ Lot = 17, Type = "stationery", Name = "Papel & Tinta", Map = false, Font = "PatrickHand", Primary = { 120, 90, 170 }, Secondary = { 255, 230, 120 }, Sign = "Fascia", Unit = "Ground" }, -- centro / avenue
+	{ Lot = 19, Type = "music", Name = "Ritmo Music", Map = false, Font = "RobotoCondensed", Primary = { 240, 160, 60 }, Secondary = { 40, 40, 50 }, Sign = "Fascia", Unit = "Ground" }, -- centro / avenue
+	{ Lot = 22, Type = "fashion", Name = "Urban Palm", Map = false, Font = "Highway", Primary = { 90, 160, 110 }, Secondary = { 255, 250, 240 }, Sign = "Fascia", Unit = "Ground" }, -- centro / avenue
+	{ Lot = 24, Type = "cosmetics", Name = "Glow Theory", Map = false, Font = "JosefinSans", Primary = { 200, 70, 70 }, Secondary = { 250, 240, 220 }, Sign = "Fascia", Unit = "Ground" }, -- centro / avenue
+	{ Lot = 25, Type = "restaurant", Name = "Mareas", Map = true, Font = "Bodoni", Primary = { 60, 50, 45 }, Secondary = { 230, 170, 90 }, Sign = "Fascia", Unit = "Ground" }, -- centro / avenue
+	{ Lot = 27, Type = "fashion", Name = "Seda & Sal", Map = false, Font = "Kalam", Primary = { 250, 200, 180 }, Secondary = { 90, 60, 50 }, Sign = "Fascia", Unit = "Ground" }, -- centro / avenue
+	{ Lot = 30, Type = "cosmetics", Name = "Aroma & Piel", Map = false, Font = "AmaticSC", Primary = { 40, 60, 90 }, Secondary = { 240, 200, 120 }, Sign = "Fascia", Unit = "Ground" }, -- centro / avenue
+	{ Lot = 32, Type = "phonerepair", Name = "Pantalla Fix", Map = false, Font = "DenkOne", Primary = { 90, 160, 110 }, Secondary = { 255, 250, 240 }, Sign = "Fascia", Unit = "Ground" }, -- centro / avenue
+	{ Lot = 33, Type = "electronics", Name = "Voltio Electronics", Map = false, Font = "Garamond", Primary = { 50, 140, 160 }, Secondary = { 250, 240, 220 }, Sign = "Fascia", Unit = "Ground" }, -- centro / avenue
+	{ Lot = 39, Type = "fashion", Name = "Moda Brisa", Map = false, Font = "Garamond", Primary = { 70, 90, 110 }, Secondary = { 230, 230, 230 }, Sign = "Fascia", Unit = "Ground" }, -- centro / avenue
+	{ Lot = 45, Type = "electronics", Name = "Neon Tech", Map = false, Font = "Nunito", Primary = { 230, 120, 150 }, Secondary = { 255, 255, 255 }, Sign = "Fascia", Unit = "Ground" }, -- centro / avenue
 	{ Lot = 47, Type = "fastfood", Name = "Grill Shack", Poi = "fastfood_13", Map = true, Font = "Bangers", Primary = { 255, 92, 150 }, Secondary = { 255, 230, 90 }, Sign = "Box" }, -- centro / avenue
+	{ Lot = 50, Type = "travel", Name = "Bluewater Trips", Map = false, Font = "TitilliumWeb", Primary = { 200, 70, 70 }, Secondary = { 250, 240, 220 }, Sign = "Fascia", Unit = "Ground" }, -- centro / avenue
 	{ Lot = 52, Type = "general", Name = "Centro General Store", Poi = "general_15", Map = true, Font = "Oswald", Primary = { 70, 100, 150 }, Secondary = { 240, 240, 240 }, Sign = "Box" }, -- centro / avenue
+	{ Lot = 53, Type = "jewelry", Name = "Brillo", Map = false, Font = "AmaticSC", Primary = { 120, 90, 170 }, Secondary = { 255, 230, 120 }, Sign = "Fascia", Unit = "Ground" }, -- centro / avenue
+	{ Lot = 55, Type = "shoes", Name = "Huella Shoes", Map = false, Font = "DenkOne", Primary = { 240, 160, 60 }, Secondary = { 40, 40, 50 }, Sign = "Fascia", Unit = "Ground" }, -- centro / avenue
+	{ Lot = 64, Type = "jewelry", Name = "Oro Fino", Map = false, Font = "Merriweather", Primary = { 50, 140, 160 }, Secondary = { 250, 240, 220 }, Sign = "Fascia", Unit = "Ground" }, -- centro / avenue
+	{ Lot = 66, Type = "watches", Name = "Reloj Real", Map = false, Font = "Fondamento", Primary = { 70, 90, 110 }, Secondary = { 230, 230, 230 }, Sign = "Fascia", Unit = "Ground" }, -- centro / avenue
+	{ Lot = 68, Type = "fashion", Name = "Northshore Apparel", Map = false, Font = "PatrickHand", Primary = { 250, 200, 180 }, Secondary = { 90, 60, 50 }, Sign = "Fascia", Unit = "Ground" }, -- centro / avenue
 	{ Lot = 69, Type = "cafe", Name = "Brew & Bay Café", Poi = "cafe_11", Map = true, Font = "AmaticSC", Primary = { 110, 72, 50 }, Secondary = { 240, 226, 200 }, Sign = "Blade" }, -- centro / avenue
+	{ Lot = 71, Type = "optics", Name = "Vista Clara Optics", Map = false, Font = "TitilliumWeb", Primary = { 40, 60, 90 }, Secondary = { 240, 200, 120 }, Sign = "Fascia", Unit = "Ground" }, -- centro / avenue
 	{ Lot = 82, Type = "supermarket", Name = "SolMart Supermarket", Poi = "supermarket_9", Map = true, Font = "Ubuntu", Primary = { 230, 70, 50 }, Secondary = { 255, 255, 255 }, Sign = "Box" }, -- centro / avenue
+	{ Lot = 84, Type = "cafe", Name = "Daydream Espresso", Map = true, Font = "JosefinSans", Primary = { 110, 72, 50 }, Secondary = { 240, 226, 200 }, Sign = "Fascia", Unit = "Ground" }, -- centro / avenue
+	{ Lot = 87, Type = "cosmetics", Name = "Belleza Sol", Map = false, Font = "Fondamento", Primary = { 90, 160, 110 }, Secondary = { 255, 250, 240 }, Sign = "Fascia", Unit = "Ground" }, -- centro / avenue
+	{ Lot = 98, Type = "books", Name = "Margin Notes", Map = false, Font = "Michroma", Primary = { 230, 120, 150 }, Secondary = { 255, 255, 255 }, Sign = "Fascia", Unit = "Ground" }, -- centro / avenue
+	{ Lot = 100, Type = "sports", Name = "Peak Gear", Map = false, Font = "Highway", Primary = { 50, 140, 160 }, Secondary = { 250, 240, 220 }, Sign = "Fascia", Unit = "Ground" }, -- centro / avenue
+	{ Lot = 101, Type = "phonerepair", Name = "iRepair Centro", Map = false, Font = "PatrickHand", Primary = { 200, 70, 70 }, Secondary = { 250, 240, 220 }, Sign = "Fascia", Unit = "Ground" }, -- centro / avenue
+	{ Lot = 103, Type = "travel", Name = "Rumbo Travel", Map = false, Font = "RobotoCondensed", Primary = { 70, 90, 110 }, Secondary = { 230, 230, 230 }, Sign = "Fascia", Unit = "Ground" }, -- centro / avenue
+	{ Lot = 117, Type = "watches", Name = "Tempo Watches", Map = false, Font = "Michroma", Primary = { 250, 200, 180 }, Secondary = { 90, 60, 50 }, Sign = "Fascia", Unit = "Ground" }, -- centro / avenue
 	{ Lot = 118, Type = "restaurant", Name = "Trattoria Luna", Poi = "restaurant_12", Map = true, Font = "Bodoni", Primary = { 30, 40, 60 }, Secondary = { 220, 180, 110 }, Sign = "Letters" }, -- centro / street
+	{ Lot = 119, Type = "fashion", Name = "Linea Mar", Map = false, Font = "JosefinSans", Primary = { 230, 120, 150 }, Secondary = { 255, 255, 255 }, Sign = "Fascia", Unit = "Ground" }, -- centro / avenue
+	{ Lot = 128, Type = "photo", Name = "Click Solara", Map = false, Font = "Michroma", Primary = { 40, 60, 90 }, Secondary = { 240, 200, 120 }, Sign = "Fascia", Unit = "Ground" }, -- centro / avenue
+	{ Lot = 131, Type = "shoes", Name = "Stride Bay", Map = false, Font = "Ubuntu", Primary = { 120, 90, 170 }, Secondary = { 255, 230, 120 }, Sign = "Fascia", Unit = "Ground" }, -- centro / avenue
+	{ Lot = 136, Type = "salon", Name = "Shear Bliss", Map = false, Font = "JosefinSans", Primary = { 120, 90, 170 }, Secondary = { 255, 230, 120 }, Sign = "Fascia", Unit = "Ground" }, -- centro / avenue
+	{ Lot = 138, Type = "gallery", Name = "Galería Norte", Map = false, Font = "Bodoni", Primary = { 240, 160, 60 }, Secondary = { 40, 40, 50 }, Sign = "Fascia", Unit = "Ground" }, -- centro / avenue
+	{ Lot = 141, Type = "books", Name = "Libro Libre", Map = false, Font = "Bodoni", Primary = { 50, 140, 160 }, Secondary = { 250, 240, 220 }, Sign = "Fascia", Unit = "Ground" }, -- centro / avenue
+	{ Lot = 146, Type = "gallery", Name = "Studio Arena", Map = false, Font = "Nunito", Primary = { 40, 60, 90 }, Secondary = { 240, 200, 120 }, Sign = "Fascia", Unit = "Ground" }, -- centro / avenue
+	{ Lot = 147, Type = "electronics", Name = "Pixelpoint", Map = false, Font = "AmaticSC", Primary = { 250, 200, 180 }, Secondary = { 90, 60, 50 }, Sign = "Fascia", Unit = "Ground" }, -- centro / avenue
+	{ Lot = 154, Type = "kids", Name = "Pequeño Mundo", Map = false, Font = "Fondamento", Primary = { 50, 140, 160 }, Secondary = { 250, 240, 220 }, Sign = "Fascia", Unit = "Ground" }, -- centro / avenue
 	{ Lot = 156, Type = "minimarket", Name = "Corner 24", Poi = "convenience_10", Map = true, Font = "GothamBlack", Primary = { 235, 90, 40 }, Secondary = { 255, 255, 255 }, Sign = "Box" }, -- centro / street
+	{ Lot = 162, Type = "electronics", Name = "Circuito", Map = false, Font = "Bodoni", Primary = { 70, 90, 110 }, Secondary = { 230, 230, 230 }, Sign = "Fascia", Unit = "Ground" }, -- centro / avenue
+	{ Lot = 163, Type = "optics", Name = "Focus Point", Map = false, Font = "Garamond", Primary = { 240, 160, 60 }, Secondary = { 40, 40, 50 }, Sign = "Fascia", Unit = "Ground" }, -- centro / avenue
 	{ Lot = 165, Type = "fastfood", Name = "Pizza Porto", Poi = "fastfood_14", Map = true, Font = "LuckiestGuy", Primary = { 250, 180, 30 }, Secondary = { 200, 40, 40 }, Sign = "Box" }, -- centro / avenue
+	{ Lot = 168, Type = "bookcafe", Name = "Chapter One", Map = false, Font = "Kalam", Primary = { 40, 60, 90 }, Secondary = { 240, 200, 120 }, Sign = "Fascia", Unit = "Ground" }, -- centro / avenue
+	{ Lot = 170, Type = "homegoods", Name = "Nido Interiors", Map = false, Font = "Oswald", Primary = { 90, 160, 110 }, Secondary = { 255, 250, 240 }, Sign = "Fascia", Unit = "Ground" }, -- centro / avenue
 	{ Lot = 171, Type = "boutique", Name = "Lino & Seda", Map = false, Font = "Highway", Primary = { 90, 160, 110 }, Secondary = { 255, 250, 240 }, Sign = "Box" }, -- costa / street
 	{ Lot = 177, Type = "surf", Name = "Offshore Boards", Map = false, Font = "JosefinSans", Primary = { 200, 70, 70 }, Secondary = { 250, 240, 220 }, Sign = "Box" }, -- costa / street
 	{ Lot = 188, Type = "restaurant", Name = "Salt & Ember", Map = true, Font = "JosefinSans", Primary = { 20, 90, 110 }, Secondary = { 250, 240, 220 }, Sign = "Letters" }, -- costa / avenue

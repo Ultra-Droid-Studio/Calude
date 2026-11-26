@@ -6,6 +6,7 @@
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local MapDefinitions = require(ReplicatedStorage.Shared.MapDefinitions)
+local CityDressing = require(script.Parent.CityDressing) -- Şehir genişletme aşama 3: cephe ayrıntıları, tabelalar, gece
 
 local BuildingBuilder = {}
 
@@ -73,6 +74,22 @@ local function tree(ctx: Ctx, x: number, z: number, bottom: number)
 	ctx.Kit:Ball(ctx.Model, ctx.Rng:NextNumber(9, 13), ctx.Base * CFrame.new(x, bottom + h + 3, z), rgb(78, 132, 64), M.Grass, { CastShadow = true })
 end
 
+-- Aşama 3: Solara Centro zemin kat dükkânı olan bina mı (işletme kaydında Unit = "Ground")
+local function retailBusiness(ctx: Ctx)
+	local b = ctx.Lot.Business
+	return if b and b.Unit == "Ground" then b else nil
+end
+
+-- Aşama 3: reklam panosu kuralı (belirlenimci, az sayıda): merkez/sahil/eski mahalle, alçak-orta binalar
+local BILLBOARD_DISTRICTS = { centro = true, costa = true, riverside = true }
+local function billboardIndex(ctx: Ctx, top: number): number?
+	local lot = ctx.Lot
+	if BILLBOARD_DISTRICTS[lot.District] and top <= 48 and ctx.W >= 24 and lot.Id % 11 == 3 then
+		return lot.Id // 11
+	end
+	return nil
+end
+
 -- ===================== STİLLER =====================
 local Styles = {}
 
@@ -124,12 +141,22 @@ function Styles.office(ctx: Ctx)
 	box(ctx, Vector3.new(w, h, d), 0, 0, 0, stone, M.Concrete)
 	local n = math.clamp(math.floor(w / 12), 2, 6)
 	local sw = (w / n) * 0.55
+	-- Aşama 3: zemin kat dükkânı varsa ön cephe camı dükkân bandının üstünden başlar
+	local retail = retailBusiness(ctx)
+	local frontBottom = if retail then CityDressing.RETAIL_TOP else 5
 	for i = 1, n do
 		local x = -w / 2 + (i - 0.5) * (w / n)
-		box(ctx, Vector3.new(sw, h - 8, 0.6), x, 5, -d / 2 - 0.25, glass, M.Glass, { CastShadow = false, Reflectance = 0.1 })
+		box(ctx, Vector3.new(sw, h - 3 - frontBottom, 0.6), x, frontBottom, -d / 2 - 0.25, glass, M.Glass, { CastShadow = false, Reflectance = 0.1 })
 		box(ctx, Vector3.new(sw, h - 8, 0.6), x, 5, d / 2 + 0.25, glass, M.Glass, { CastShadow = false, Reflectance = 0.1 })
 	end
 	box(ctx, Vector3.new(w * 0.3, 5, d * 0.3), w * 0.15, h, 0, rgb(140, 140, 140), M.Metal) -- çatı üniteleri
+	if retail then
+		CityDressing.RetailBand(ctx, CityDressing.Brand(retail, retail.Name, rgb(255, 122, 69)), w, d)
+	end
+	local board = billboardIndex(ctx, h)
+	if board then
+		CityDressing.Billboard(ctx, h, w, d, board)
+	end
 end
 
 function Styles.apartment_modern(ctx: Ctx)
@@ -137,12 +164,20 @@ function Styles.apartment_modern(ctx: Ctx)
 	local body = pick(rng, { rgb(240, 238, 232), rgb(220, 224, 228), rgb(70, 72, 78), rgb(200, 186, 170) })
 	local glass = pick(rng, PALETTES.glass)
 	box(ctx, Vector3.new(w, h, d), 0, 0, 0, body, M.SmoothPlastic)
-	box(ctx, Vector3.new(w * 0.7, h - 6, 0.5), 0, 3, -d / 2 - 0.2, glass, M.Glass, { CastShadow = false })
+	-- Aşama 3: zemin kat dükkânı varsa lobi camı dükkân bandının üstünden başlar
+	local retail = retailBusiness(ctx)
+	local lobbyBottom = if retail then CityDressing.RETAIL_TOP else 3
+	box(ctx, Vector3.new(w * 0.7, h - 3 - lobbyBottom, 0.5), 0, lobbyBottom, -d / 2 - 0.2, glass, M.Glass, { CastShadow = false })
 	local floors = math.floor(h / 10)
 	for f = 1, floors - 1 do
 		box(ctx, Vector3.new(w * 0.78, 0.8, 4), 0, f * 10, -d / 2 - 2, body, M.Concrete)
 	end
 	box(ctx, Vector3.new(w + 1, 1.5, d + 1), 0, h, 0, body, M.Concrete, { CastShadow = false })
+	CityDressing.BalconyRails(ctx, w, d, floors)
+	CityDressing.RoofUnits(ctx, h + 1.5, w * 0.8, d * 0.8, 0)
+	if retail then
+		CityDressing.RetailBand(ctx, CityDressing.Brand(retail, retail.Name, rgb(255, 122, 69)), w, d)
+	end
 end
 
 function Styles.apartment_brick(ctx: Ctx)
@@ -158,6 +193,11 @@ function Styles.apartment_brick(ctx: Ctx)
 	end
 	box(ctx, Vector3.new(w + 2, 2, d + 2), 0, h, 0, trim, M.Concrete)
 	box(ctx, Vector3.new(6, 8, 1), 0, 0, -d / 2 - 0.5, trim, M.Wood) -- giriş
+	CityDressing.BrickDetails(ctx, w, d, h, floors) -- aşama 3: klimalar, su deposu, giriş saçağı/lambası
+	local board = billboardIndex(ctx, h + 2)
+	if board then
+		CityDressing.Billboard(ctx, h + 2, w, d, board)
+	end
 end
 
 function Styles.hotel(ctx: Ctx)
@@ -186,7 +226,15 @@ function Styles.deco_lowrise(ctx: Ctx)
 		box(ctx, Vector3.new(w * 0.7, 3, 0.4), 0, f * 9 - 6, -d / 2 - 0.2, rgb(80, 130, 150), M.Glass, { CastShadow = false })
 	end
 	box(ctx, Vector3.new(3, h + 6, 2), 0, 0, -d / 2 - 1, rgb(255, 255, 255), M.SmoothPlastic)
-	box(ctx, Vector3.new(w * 0.9, 0.6, 0.4), 0, h - 1.5, -d / 2 - 0.3, neon, M.Neon, { CastShadow = false })
+	-- Aşama 3: üst neon şerit artık gündüz renkli boya, gece neon (her yer gündüz de parlamasın)
+	local strip = box(ctx, Vector3.new(w * 0.9, 0.6, 0.4), 0, h - 1.5, -d / 2 - 0.3, neon, M.SmoothPlastic, { CastShadow = false })
+	strip:SetAttribute("NightColor", neon)
+	ctx.Kit:Tag(strip, "NightGlow")
+	CityDressing.DecoDetails(ctx, w, d, h, body, neon)
+	local board = billboardIndex(ctx, h)
+	if board then
+		CityDressing.Billboard(ctx, h, w, d, board)
+	end
 end
 
 function Styles.house_a(ctx: Ctx)
@@ -238,29 +286,34 @@ function Styles.townhouse(ctx: Ctx)
 	local w, d, h, rng = ctx.W, ctx.D, math.clamp(ctx.H, 18, 32), ctx.Rng
 	local n = math.clamp(math.floor(w / 16), 2, 4)
 	local uw = w / n
+	local units = {}
 	for i = 1, n do
 		local x = -w / 2 + (i - 0.5) * uw
 		local color = pick(rng, PALETTES.brick)
 		local uh = h + rng:NextNumber(-3, 3)
+		table.insert(units, { x = x, h = uh })
 		box(ctx, Vector3.new(uw - 0.3, uh, d * 0.8), x, 0, d * 0.1, color, M.Brick)
 		box(ctx, Vector3.new(uw, 1.4, d * 0.8 + 1), x, uh, d * 0.1, rgb(226, 220, 206), M.Concrete, { CastShadow = false })
 		box(ctx, Vector3.new(3.5, 7, 0.4), x, 1.5, -d * 0.3 - 0.2, rgb(40, 48, 60), M.Wood)
 		box(ctx, Vector3.new(5, 1.5, 3), x, 0, -d * 0.3 - 1.5, rgb(200, 196, 188), M.Concrete, { CastShadow = false })
 	end
+	CityDressing.TownhouseDetails(ctx, w, d, units) -- aşama 3: bacalar, pencere çiçeklikleri
 end
 
-local function storefrontBase(ctx: Ctx, name: string, accent: Color3, bodyColor: Color3?, font: string?)
+local function storefrontBase(ctx: Ctx, name: string, accent: Color3, bodyColor: Color3?)
 	local w, d, h, rng = ctx.W, ctx.D, math.clamp(ctx.H, 10, 22), ctx.Rng
 	local body = bodyColor or pick(rng, PALETTES.stone)
 	local depth = d * 0.85
 	local z = d / 2 - depth / 2
 	box(ctx, Vector3.new(w, h, depth), 0, 0, z, body, M.Concrete)
 	local front = z - depth / 2
-	box(ctx, Vector3.new(w * 0.82, h * 0.5, 0.5), 0, 0.5, front - 0.2, rgb(150, 190, 210), M.Glass, { CastShadow = false, Transparency = 0.25 })
+	local glass = box(ctx, Vector3.new(w * 0.82, h * 0.5, 0.5), 0, 0.5, front - 0.2, rgb(150, 190, 210), M.Glass, { CastShadow = false, Transparency = 0.25 })
+	CityDressing.ShopWindow(ctx, glass) -- gece sıcak ışık
 	box(ctx, Vector3.new(5, 7.5, 0.6), 0, 0, front - 0.4, rgb(60, 60, 64), M.Metal, { CastShadow = false })
-	box(ctx, Vector3.new(w * 0.9, 0.5, 5), 0, h * 0.5 + 1.5, front - 2.5, accent, M.Fabric)
-	signBoard(ctx, name, math.min(w * 0.8, 40), 3.2, h * 0.5 + 2.6, front - 0.6, rgb(28, 28, 32), accent, true, font)
-	return front, h
+	-- Aşama 3: eski tek tip tente + her zaman yanan siyah neon tabela yerine işletmenin kendi tabelası
+	-- (Box | Letters | Blade | Awning; marka rengi ve yazı tipi; gece parlar)
+	CityDressing.ShopFront(ctx, CityDressing.Brand(ctx.Lot.Business, name, accent), front, h, w)
+	return front, h, depth, z
 end
 
 local POI_ACCENT = {
@@ -273,10 +326,12 @@ function Styles.storefront(ctx: Ctx)
 	local accent = if ctx.Poi then POI_ACCENT[ctx.Poi.Type] or rgb(255, 122, 69) else rgb(255, 122, 69)
 	if ctx.Poi and ctx.Poi.Type == "supermarket" then
 		-- Süpermarket: daha geniş cephe, sepet/el arabası köşesi
-		storefrontBase(ctx, poiName(ctx, "MARKET"), accent, rgb(236, 236, 230))
+		local _, h, depth, z = storefrontBase(ctx, poiName(ctx, "MARKET"), accent, rgb(236, 236, 230))
 		box(ctx, Vector3.new(8, 3, 4), ctx.W / 2 - 6, 0, -ctx.D / 2 + 3, rgb(160, 160, 166), M.Metal)
+		CityDressing.RoofUnits(ctx, h, ctx.W * 0.8, depth * 0.8, z, 3)
 	else
-		storefrontBase(ctx, poiName(ctx, "SHOP"), accent)
+		local _, h, depth, z = storefrontBase(ctx, poiName(ctx, "SHOP"), accent)
+		CityDressing.RoofUnits(ctx, h, ctx.W * 0.8, depth * 0.8, z)
 	end
 end
 
@@ -284,19 +339,15 @@ function Styles.storefront_plain(ctx: Ctx)
 	local rng = ctx.Rng
 	local accent = pick(rng, { rgb(200, 70, 80), rgb(60, 140, 120), rgb(70, 100, 180), rgb(220, 160, 50), rgb(130, 80, 160) })
 	-- Rastgele isim yine çekilir: tohum sırası korunur, binanın gövde/üst kat renkleri değişmez.
+	-- İşletme kaydı varsa tabela onun adı/markasıyla çizilir (CityDressing.Brand; aşama 2-3)
 	local name = pick(rng, DECOR_SHOP_NAMES)
-	local font = nil
-	local business = ctx.Lot.Business
-	if business then
-		-- Şehir genişletme aşama 2: işletme kaydındaki özgün isim, marka rengi (tabela yazısı + tente) ve yazı tipi
-		name = business.Name
-		accent = rgb(business.Primary[1], business.Primary[2], business.Primary[3])
-		font = business.Font
-	end
-	local front, h = storefrontBase(ctx, name, accent, pick(rng, PALETTES.pastel), font)
+	local front, h, depth, z = storefrontBase(ctx, name, accent, pick(rng, PALETTES.pastel))
 	if ctx.H > 24 then
 		-- üstte daire katları
 		box(ctx, Vector3.new(ctx.W * 0.96, ctx.H - h, ctx.D * 0.8), 0, h, ctx.D * 0.1, pick(rng, PALETTES.stone), M.Concrete)
+		CityDressing.RoofUnits(ctx, ctx.H, ctx.W * 0.8, ctx.D * 0.7, ctx.D * 0.1)
+	else
+		CityDressing.RoofUnits(ctx, h, ctx.W * 0.8, depth * 0.8, z)
 	end
 	local _ = front
 end
