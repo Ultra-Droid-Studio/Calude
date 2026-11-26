@@ -152,8 +152,11 @@ araç 70 hıza zaten çıkamıyor (0→70 için ~190 stud gerekir). Hızı artı
 yaya ve kapı hedefleri · [3b] 5 tohum × 4 dk · [4] park etmiş araçla kapalı şerit · [4b] kavşak çıkışı kapalı ·
 [5] yoldan karşıya yürüyen oyuncu · [6] hareketli oyuncu ve iki oyuncu · [7] gece/öğle · [8] yoğunluk ön ayarları ·
 [9] ışık planları · [10] kapı kaydı · [11] yürüme animasyonu.
-Ek: farklı tohumlarla 18 × 5 dk çakışma/çarpma taraması, 16 × 4 dk kilit taraması, 8 × 4 dk Yüksek yoğunluk (90 araç),
-18 × 5 dk hareketli oyuncu, 4 × 10 dk kavşak tıkama taraması — son kodla hepsi temiz.
+Son kodla: tam test paketi PASS (5 ek tohum dahil) ve ek çakışma/çarpma taramasından 5 × 5 dk temiz (18'lik tarama
+uygulama tarafından yarıda kesildi, kalanı çalışmadı). Geliştirme sırasında, son birkaç düzeltmeden önceki kodla:
+18 × 5 dk çakışma/çarpma, 16 × 4 dk kilit, 8 × 4 dk Yüksek yoğunluk (90 araç), 18 × 5 dk hareketli oyuncu, 4 × 10 dk
+kavşak tıkama taramaları temizdi; son düzeltmeler (doğma kuralları, yürüyen insanı önceden görme, ilk adım) sadece
+doğmayı kısıtlar ve freni erkene alır.
 
 Bu çalışma sırasında testlerin yakaladığı ve düzeltilen hatalar (hepsi yeni yoğunlukta ortaya çıktı):
 1. Viraja yaklaşırken geç ve sert fren → arkadan çarpma. 2. Kavşaktan çıkıp yaya geçidinde duran aracın arkası
