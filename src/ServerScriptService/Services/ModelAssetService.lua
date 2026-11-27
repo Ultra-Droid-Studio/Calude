@@ -2,6 +2,7 @@
 -- oyunun aradığı yerlere koyar. Diğer servislerden önce çalışır (Priority 0; Init içinde biter), böylece dünya,
 -- araçlar ve trafik başlarken modeller hazırdır.
 --   Cars → ReplicatedStorage.VehicleModels.<Ad> (CarModelConfig.Models; parçalar adlarının önekiyle toplanır)
+--   TrafficLights → ReplicatedStorage.TrafficLightModels (TL_<Tip>_* parçaları; istemcideki SignalRenderer kullanır)
 -- Studio'da elle konmuş bir klasör varsa ona dokunulmaz. Numara 0 ya da indirme başarısızsa eski görünüm kalır.
 -- Sokak lambalarını WorldGen/StreetLights kendisi yükler.
 
@@ -80,10 +81,43 @@ local function setupCars()
 	end
 end
 
+-- Kökteki "<önek>_" parçalarını, istemcilerin hazır olmadan kullanmayacağı bir klasöre koy
+local function setupFolder(key: string, folderName: string, prefix: string, label: string)
+	if ReplicatedStorage:FindFirstChild(folderName) then
+		return -- Studio'da elle konmuş
+	end
+	local root = ModelAssetService.Load(key)
+	if not root then
+		return
+	end
+	local folder = Instance.new("Folder")
+	folder.Name = folderName
+	folder:SetAttribute("Ready", false)
+	local model = collect(root, prefix)
+	root:Destroy()
+	if not model then
+		warn("[ModelAssetService] " .. label .. ": dosyada " .. prefix .. "_* parçası yok")
+		folder:Destroy()
+		return
+	end
+	model.Parent = folder
+	folder.Parent = ReplicatedStorage
+	folder:SetAttribute("Ready", true)
+	print("[ModelAssetService] " .. label .. " hazır:", #model:GetChildren(), "parça")
+end
+
 function ModelAssetService:Init()
-	local ok, err = pcall(setupCars)
-	if not ok then
-		warn("[ModelAssetService] arabalar kurulamadı:", err)
+	local jobs = {
+		{ "arabalar", setupCars },
+		{ "trafik ışıkları", function()
+			setupFolder("TrafficLights", "TrafficLightModels", "TL", "trafik ışıkları")
+		end },
+	}
+	for _, job in jobs do
+		local ok, err = pcall(job[2])
+		if not ok then
+			warn("[ModelAssetService] " .. job[1] .. " kurulamadı:", err)
+		end
 	end
 end
 
