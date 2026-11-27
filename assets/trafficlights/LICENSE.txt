@@ -1,0 +1,5 @@
+SOLARA_TrafficLights.glb
+  Based on the traffic lights of "City Builder Bits" by Kenney (www.kenney.nl), licensed CC0 1.0 Universal
+  (public domain dedication: https://creativecommons.org/publicdomain/zero/1.0/). Credit is not required; given anyway.
+  Modified for SOLARA (tools/trafficlights_convert.py): decompressed, gradient atlas baked into solid colours, lenses
+  split into Red / Yellow / Green parts, rotated to face -Z, origin at the pole's foot.
