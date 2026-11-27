@@ -5,7 +5,7 @@ kullanıcının oyunda testi.
 
 | # | İş | Not |
 |---|---|---|
-| 1 | **Optimizasyon** | Önce ölçüm: geliştiriciye özel performans göstergesi (FPS, görünen yaya/araç sayısı); sonra uzaktaki yaya/araçlar için ucuz çizim, telefonda daha az yaya, küçük parçalarda gölge kapatma, model çarpışma şekillerini sadeleştirme |
+| 1 | **Optimizasyon** (öncelik düştü) | Kullanıcının ölçümü (27.11.2026): Samsung Galaxy Tab S6 Lite (Exynos 9611, 4 GB RAM), yoğun NPC + trafik modu, grafikler en yüksekte: çoğunlukla akıcı 60 FPS. Bina içleri / AVM / ana karakterler eklendikten sonra yeniden ölçülecek. Gerekirse önce ölçüm: geliştiriciye özel performans göstergesi (FPS, görünen yaya/araç sayısı); sonra uzaktaki yaya/araçlar için ucuz çizim, telefonda daha az yaya, küçük parçalarda gölge kapatma, model çarpışma şekillerini sadeleştirme |
 | 2 | **Arabaları güzelleştirme + iç kamera** | Modellerin içi boş: önce iç donanım (koltuk, gösterge paneli, direksiyon, dikiz aynası), sonra iç kamera; boya parlaklığı, metal jant/krom, cam rengi, gece far hüzmesi, "SOLARA" plakası |
 | 3 | **Çarpışma düzeltmeleri** | Yaya ve NPC araç çarpınca donup yok olmasın, doğal tepki versin; trafik ışıkları / sokak eşyaları çarpınca sökülüp düşsün, bir süre sonra kaybolsun, uzaklaşıp dönünce yerinde olsun |
 | 4 | **Motosikletler** | Oyunda 5 motosiklet tanımı var (parçalardan görünüm). Zip'teki iki motosiklet modelinin lisansı belirsiz ("Military Motorbike" — Zsky, "Motorcycle" — Poly by Google, büyük ihtimalle CC BY 3.0): kaynak/lisans doğrulanmalı ya da yeni model bulunmalı |
