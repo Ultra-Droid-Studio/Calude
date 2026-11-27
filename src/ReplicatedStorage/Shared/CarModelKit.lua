@@ -27,6 +27,8 @@ local function warnOnce(key: string, ...)
 end
 
 -- Parça adı → rol ve (tekerlekse) hangi teker. İçe aktarıcının eklediği önek/sonekleri tolere eder.
+-- Orijinal görünümlü modellerde (Config.Original) rolü olmayan her parça "Keep" olur: dokusu, rengi, malzemesi
+-- olduğu gibi kalır.
 local function roleOf(name: string, modelName: string): (string?, string?)
 	local n = name
 	if string.sub(n, 1, #modelName + 1) == modelName .. "_" then
@@ -39,6 +41,9 @@ local function roleOf(name: string, modelName: string): (string?, string?)
 	local role = string.match(n, "^(%a+%d?)")
 	if role and Config.Roles[role] then
 		return role, nil
+	end
+	if Config.Original and Config.Original[modelName] then
+		return "Keep", nil
 	end
 	return nil, nil
 end
@@ -195,10 +200,14 @@ function CarModelKit.Build(info, opts)
 	local base, second = CarModelKit.PaintColors(info.Name, opts.Paint)
 	local s = opts.Scale
 	local result = { Parts = {}, Spin = {}, Lights = { Headlight = {}, TailLight = {} } }
+	local original = Config.Original and Config.Original[info.Name]
 	for _, e in info.Entries do
 		local p = e.Template:Clone()
 		for _, child in p:GetChildren() do
-			child:Destroy() -- içe aktarıcının eklediği görünüş/kaynak nesneleri: renk ve bağlantılar bizden
+			-- içe aktarıcının eklediği kaynak nesneleri bizden; orijinal modelde doku (SurfaceAppearance) kalır
+			if not (original and child:IsA("SurfaceAppearance")) then
+				child:Destroy()
+			end
 		end
 		p.Size = e.Template.Size * s
 		p.Anchored = false
@@ -206,12 +215,17 @@ function CarModelKit.Build(info, opts)
 		p.CanCollide = false
 		p.CanQuery = false
 		p.CanTouch = false
-		local style = Config.Roles[e.Role] or {}
-		p.Material = style.Material or Enum.Material.SmoothPlastic
-		p.Transparency = style.Transparency or 0
-		p.Reflectance = style.Reflectance or 0
-		p.CastShadow = opts.Shadows ~= false and (e.Role == "Paint" or e.Role == "Paint2" or e.Role == "Dark" or e.Role == "Tire")
-		p.Color = if e.Role == "Paint" then base elseif e.Role == "Paint2" then second else (colors[e.Role] or Color3.fromRGB(110, 110, 110))
+		if original and e.Role ~= "Paint" and e.Role ~= "Paint2" then
+			-- orijinal görünüm: içe aktarılan renk, malzeme, saydamlık, doku (TextureID / SurfaceAppearance) aynen
+			p.CastShadow = opts.Shadows ~= false and not e.Wheel
+		else
+			local style = Config.Roles[e.Role] or {}
+			p.Material = style.Material or Enum.Material.SmoothPlastic
+			p.Transparency = style.Transparency or 0
+			p.Reflectance = style.Reflectance or 0
+			p.CastShadow = opts.Shadows ~= false and (e.Role == "Paint" or e.Role == "Paint2" or e.Role == "Dark" or e.Role == "Tire")
+			p.Color = if e.Role == "Paint" then base elseif e.Role == "Paint2" then second else (colors[e.Role] or Color3.fromRGB(110, 110, 110))
+		end
 		p:SetAttribute("CarRole", e.Role)
 		p:SetAttribute("OffColor", p.Color)
 		if e.Role == "Headlight" or e.Role == "TailLight" then

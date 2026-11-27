@@ -25,6 +25,11 @@ return {
 		sedan_vela = { { Model = "Taxi", Chance = 0.15 } },
 	},
 
+	-- Orijinal görünümlü (dokulu) modeller: rolü olmayan parçalar ("Keep") ve Paint dışındaki roller içe aktarıldığı
+	-- gibi kalır (renk, malzeme, doku). Tekerlekler yine Wheel_<FL|FR|RL|RR>_<Tire|Rim> adıyla bulunur ve döner.
+	-- Yalnız "Paint" adlı parçalar aracın renk listesinden boyanır (FixedPaint değilse).
+	Original = {},
+
 	-- Boyası değişmeyen modeller (taksi sarısı, polis siyah-beyazı); diğerlerinde Paint = aracın renk listesinden
 	FixedPaint = { Taxi = true, Cop = true },
 
