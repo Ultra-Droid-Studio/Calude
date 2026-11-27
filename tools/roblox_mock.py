@@ -133,6 +133,53 @@ function typeof(v)
   return type(v)
 end
 TAGS = {}
+math.clamp = math.clamp or function(x, a, b) if x < a then return a elseif x > b then return b end return x end
+CFrame.identity = CFrame.new()
+function CFrame.fromAxisAngle(axis, ang)
+  local a = axis.Unit
+  local c, s, t = math.cos(ang), math.sin(ang), 1 - math.cos(ang)
+  local x, y, z = a.X, a.Y, a.Z
+  return mk(Vector3.new(0, 0, 0), {t*x*x + c, t*x*y - s*z, t*x*z + s*y,
+                                   t*x*y + s*z, t*y*y + c, t*y*z - s*x,
+                                   t*x*z - s*y, t*y*z + s*x, t*z*z + c})
+end
+-- Bones (Attachment subclass): CFrame is local to the parent part / bone; Transform animates it
+local baseIndex = Obj.__index
+Obj.__index = function(t, k)
+  if rawget(t, "_cls") == "Bone" or rawget(t, "_cls") == "Attachment" then
+    local p = rawget(t, "_p")
+    if k == "WorldCFrame" or k == "TransformedWorldCFrame" then
+      local parent = p.Parent
+      local base
+      if parent and (rawget(parent, "_cls") == "Bone") then base = parent[k]
+      elseif parent and parent.CFrame then base = parent.CFrame
+      else base = CFrame.new() end
+      local cf = base * p.CFrame
+      if k == "TransformedWorldCFrame" and p.Transform then cf = cf * p.Transform end
+      return cf
+    end
+    if k == "WorldPosition" then return t.WorldCFrame.Position end
+  end
+  return baseIndex(t, k)
+end
+-- Model:ScaleTo / GetScale: parts scale about the pivot (PrimaryPart), attachment / bone offsets scale with them
+function methods.GetScale(t) return rawget(t, "_scale") or 1 end
+function methods.ScaleTo(t, f)
+  local r = f / (rawget(t, "_scale") or 1)
+  rawset(t, "_scale", f)
+  local pivot = t.PrimaryPart and t.PrimaryPart.CFrame.Position or Vector3.new(0, 0, 0)
+  for _, d in ipairs(t:GetDescendants()) do
+    local cls = rawget(d, "_cls")
+    if cls == "Bone" or cls == "Attachment" then
+      local c = d.CFrame
+      d.CFrame = CFrame.new(c.Position * r) * c.Rotation
+    elseif d.Size and d.CFrame then
+      d.Size = d.Size * r
+      local c = d.CFrame
+      d.CFrame = CFrame.new(pivot + (c.Position - pivot) * r) * c.Rotation
+    end
+  end
+end
 CollectionService = { AddTag = function(_, inst, tag) TAGS[#TAGS + 1] = { inst, tag } end }
 
 WARNED = 0
@@ -141,7 +188,12 @@ warn = function(...) WARNED = WARNED + 1; print("warn", ...) end
 -- Random with a fixed sequence
 local RND = {}
 RND.__index = RND
-function RND:NextNumber() self.s = (self.s * 1103515245 + 12345) % 2147483648; return self.s / 2147483648 end
+function RND:NextNumber(a, b)
+  self.s = (self.s * 1103515245 + 12345) % 2147483648
+  local r = self.s / 2147483648
+  if a then return a + r * (b - a) end
+  return r
+end
 function RND:NextInteger(a, b) return a + math.floor(self:NextNumber() * (b - a + 1)) end
 Random = { new = function(seed) return setmetatable({s = seed or 1}, RND) end }
 """

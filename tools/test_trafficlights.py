@@ -42,6 +42,7 @@ SERVICES = r"""
 RS = new("ReplicatedStorage")
 local shared = new("Folder", {Name = "Shared", Parent = RS})
 TLD_MARK = new("ModuleScript", {Name = "TrafficLightData", Parent = shared})
+PMD_MARK = new("ModuleScript", {Name = "PedModelData", Parent = shared})
 WS = new("Workspace")
 function WS.Raycast() return nil end
 RaycastParams = { new = function() return {} end }
@@ -57,6 +58,7 @@ RS.Modules = { CarModelConfig = "__CMC" }
 AID = { Cars = 0, TrafficLights = 0 }
 local realRequire = require
 require = function(x)
+  if x == PMD_MARK then return PMD end
   if x == TLD_MARK then return TLD end
   if x == "__AID" then return AID end
   if x == "__CMC" then return { Folder = "VehicleModels", Models = {} } end
@@ -112,6 +114,7 @@ def runtime(variant, ready=True):
     lua = LuaRuntime(unpack_returned_tuples=True)
     lua.execute(roblox_mock.MOCK + SERVICES)
     g = lua.globals()
+    g.PMD = lua.execute(open("src/ReplicatedStorage/Shared/PedModelData.lua", encoding="utf-8").read())
     g.TLD = lua.execute(open("src/ReplicatedStorage/Shared/TrafficLightData.lua", encoding="utf-8").read())
     if variant is not None:
         scale, (yaw, pitch), origin, baked = variant

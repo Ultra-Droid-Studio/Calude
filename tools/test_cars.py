@@ -43,6 +43,8 @@ MOCK = roblox_mock.MOCK + r"""
 RS = new("ReplicatedStorage")
 local modules = new("Folder", {Name = "Modules", Parent = RS})
 CMC_MARK = new("ModuleScript", {Name = "CarModelConfig", Parent = modules})
+local shared = new("Folder", {Name = "Shared", Parent = RS})
+PMD_MARK = new("ModuleScript", {Name = "PedModelData", Parent = shared})
 LOADABLE = nil
 game = { GetService = function(_, n)
   if n == "ReplicatedStorage" then return RS end
@@ -52,6 +54,7 @@ end }
 AID = { Cars = 0 }
 local realRequire = require
 require = function(x)
+  if x == PMD_MARK then return PMD end
   if x == CMC_MARK then return CMC end
   if x == "__AID" then return AID end
   return realRequire(x)
@@ -86,6 +89,7 @@ def runtime(variant, with_asset=True):
     lua = LuaRuntime(unpack_returned_tuples=True)
     lua.execute(MOCK)
     g = lua.globals()
+    g.PMD = lua.execute(open("src/ReplicatedStorage/Shared/PedModelData.lua", encoding="utf-8").read())
     g.CMC = lua.execute(convert(open("src/ReplicatedStorage/Modules/CarModelConfig.lua", encoding="utf-8").read()))
     if variant is not None:
         scale, (yaw, pitch), origin, baked = variant

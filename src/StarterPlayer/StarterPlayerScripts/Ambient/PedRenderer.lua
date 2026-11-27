@@ -9,8 +9,14 @@
 -- Çeşitlilik (her havuzdan alışta yeniden giydirilir): boy (3 ölçek), gövde genişliği, ten rengi, kıyafet tipi
 -- (tişört, uzun kol, ceket, takım elbise, elbise/etek, şort), saç (kısa, uzun, topuz, kel) ya da şapka (kep, bere),
 -- aksesuar (sırt çantası, omuz çantası, gözlük). Parçalar çarpışmaz, gölge düşürmez, ışın sorgularına girmez.
+--
+-- Gerçekçi yayalar: kullanıcının verdiği Rocketbox modelleri (yüz, saç, kıyafet dokulu; deri/skinned) sunucuda
+-- yüklüyse (ReplicatedStorage.PedestrianModels) yeni yayalar onlardan kurulur (PedMeshRig) ve aynı PedAnim
+-- pozlarıyla kemiklerden canlandırılır. Model yoksa yukarıdaki R15 yayalar kullanılır.
 
 local Workspace = game:GetService("Workspace")
+
+local PedMeshRig = require(script.Parent:WaitForChild("PedMeshRig"))
 
 local PedRenderer = {}
 
@@ -38,6 +44,7 @@ local rng = Random.new()
 type Rig = {
 	Scale: number, Width: number, Parts: { [string]: BasePart }, Motors: { [string]: Motor6D }, Extras: { Instance },
 	Face: Decal, Fade: number,
+	Mesh: boolean?, RootY: number?, -- gerçekçi (Rocketbox) yaya: PedMeshRig
 }
 local rigOf: { [Model]: Rig } = {}
 
@@ -263,10 +270,25 @@ function PedRenderer.Acquire(): Model
 	if model then
 		rig = rigOf[model]
 	else
-		model, rig = build(SCALES[rng:NextInteger(1, #SCALES)], rng:NextNumber(0.9, 1.08))
+		if PedMeshRig.Available() then
+			local ok, m, r = pcall(PedMeshRig.Build, rng)
+			if ok and m then
+				model, rig = m, r
+			elseif not ok then
+				warn("[PedRenderer] gerçekçi yaya kurulamadı:", m)
+			end
+		end
+		if not model then
+			model, rig = build(SCALES[rng:NextInteger(1, #SCALES)], rng:NextNumber(0.9, 1.08))
+		end
 		rigOf[model] = rig
 	end
-	dress(model, rig)
+	if rig.Mesh then
+		PedMeshRig.Neutral(rig)
+		PedRenderer.SetFade(model, 0)
+	else
+		dress(model, rig)
+	end
 	model.Parent = folder
 	return model
 end
@@ -299,7 +321,7 @@ function PedRenderer.Place(model: Model, position: Vector3, hx: number, hz: numb
 	if not root or not rig then
 		return
 	end
-	local pos = position + Vector3.new(0, ROOT_Y * rig.Scale, 0)
+	local pos = position + Vector3.new(0, if rig.Mesh then rig.RootY else ROOT_Y * rig.Scale, 0)
 	local look = Vector3.new(hx, 0, hz)
 	if look.Magnitude < 0.01 then
 		look = Vector3.new(0, 0, -1)
@@ -312,6 +334,10 @@ local Angles = CFrame.Angles
 function PedRenderer.Pose(model: Model, pose)
 	local rig = rigOf[model]
 	if not rig then
+		return
+	end
+	if rig.Mesh then
+		PedMeshRig.Pose(rig, pose)
 		return
 	end
 	local M, k = rig.Motors, rig.Scale
@@ -333,7 +359,9 @@ end
 -- Ayakta, kollar yanda (uzaktaki yaya için tek seferlik)
 function PedRenderer.Neutral(model: Model)
 	local rig = rigOf[model]
-	if rig then
+	if rig and rig.Mesh then
+		PedMeshRig.Neutral(rig)
+	elseif rig then
 		for _, m in rig.Motors do
 			m.Transform = CFrame.identity
 		end
@@ -347,6 +375,10 @@ function PedRenderer.SetFade(model: Model, fade: number)
 		return
 	end
 	rig.Fade = fade
+	if rig.Mesh then
+		PedMeshRig.SetFade(rig, fade)
+		return
+	end
 	for _, p in rig.Parts do
 		if p.Name ~= "HumanoidRootPart" then
 			p.LocalTransparencyModifier = fade

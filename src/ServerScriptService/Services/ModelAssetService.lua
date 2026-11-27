@@ -3,6 +3,7 @@
 -- araçlar ve trafik başlarken modeller hazırdır.
 --   Cars → ReplicatedStorage.VehicleModels.<Ad> (CarModelConfig.Models; parçalar adlarının önekiyle toplanır)
 --   TrafficLights → ReplicatedStorage.TrafficLightModels (TL_<Tip>_* parçaları; istemcideki SignalRenderer kullanır)
+--   Pedestrians → ReplicatedStorage.PedestrianModels.Ped_<Id> (deri MeshPart + kemikleri; istemcideki PedMeshRig)
 -- Studio'da elle konmuş bir klasör varsa ona dokunulmaz. Numara 0 ya da indirme başarısızsa eski görünüm kalır.
 -- Sokak lambalarını WorldGen/StreetLights kendisi yükler.
 
@@ -12,6 +13,7 @@ local InsertService = game:GetService("InsertService")
 
 local AssetIds = require(ServerScriptService.WorldGen.AssetIds)
 local CarModelConfig = require(ReplicatedStorage.Modules.CarModelConfig)
+local PedModelData = require(ReplicatedStorage.Shared.PedModelData)
 
 local ModelAssetService = {
 	Name = "ModelAssetService",
@@ -106,12 +108,76 @@ local function setupFolder(key: string, folderName: string, prefix: string, labe
 	print("[ModelAssetService] " .. label .. " hazır:", #model:GetChildren(), "parça")
 end
 
+-- Yayalar: her karakterin parçaları (Ped_<Id>*) ve kemik ağacı kendi Model'ine. Kemikler bir parçanın altında
+-- olmalı: karakterin parçalarından birinin altında değilse ilk parçasına taşınır (dünya konumu korunur).
+local function setupPeds()
+	if ReplicatedStorage:FindFirstChild("PedestrianModels") then
+		return -- Studio'da elle konmuş
+	end
+	local root = ModelAssetService.Load("Pedestrians")
+	if not root then
+		return
+	end
+	local folder = Instance.new("Folder")
+	folder.Name = "PedestrianModels"
+	folder:SetAttribute("Ready", false)
+	local found = {}
+	for _, info in PedModelData.Peds do
+		local prefix = "Ped_" .. info.Id
+		local parts, mine, topBones = {}, {}, {}
+		for _, d in root:GetDescendants() do
+			if d:IsA("BasePart") and (d.Name == prefix or string.sub(d.Name, 1, #prefix + 1) == prefix .. "_") then
+				table.insert(parts, d)
+				mine[d] = true
+			end
+		end
+		for _, d in root:GetDescendants() do
+			if d:IsA("Bone") and string.sub(d.Name, 1, #prefix + 1) == prefix .. "_" then
+				local parent = d.Parent
+				local parentIsOwnBone = parent and parent:IsA("Bone") and string.sub(parent.Name, 1, #prefix + 1) == prefix .. "_"
+				if not parentIsOwnBone then
+					table.insert(topBones, d)
+				end
+			end
+		end
+		if #parts > 0 then
+			local model = Instance.new("Model")
+			model.Name = prefix
+			for _, b in topBones do
+				local parent = b.Parent
+				if not (parent and mine[parent]) then
+					local world = if parent and parent:IsA("BasePart") then parent.CFrame * b.CFrame else b.WorldCFrame
+					b.Parent = parts[1]
+					b.CFrame = parts[1].CFrame:ToObjectSpace(world)
+				end
+			end
+			for _, p in parts do
+				p.Anchored = true
+				p.Parent = model
+			end
+			model.PrimaryPart = parts[1]
+			model.Parent = folder
+			table.insert(found, info.Id)
+		end
+	end
+	root:Destroy()
+	if #found == 0 then
+		warn("[ModelAssetService] yaya modeli dosyasında Ped_* parçası yok")
+		folder:Destroy()
+		return
+	end
+	folder.Parent = ReplicatedStorage
+	folder:SetAttribute("Ready", true)
+	print("[ModelAssetService] yayalar hazır:", table.concat(found, ", "))
+end
+
 function ModelAssetService:Init()
 	local jobs = {
 		{ "arabalar", setupCars },
 		{ "trafik ışıkları", function()
 			setupFolder("TrafficLights", "TrafficLightModels", "TL", "trafik ışıkları")
 		end },
+		{ "yayalar", setupPeds },
 	}
 	for _, job in jobs do
 		local ok, err = pcall(job[2])
