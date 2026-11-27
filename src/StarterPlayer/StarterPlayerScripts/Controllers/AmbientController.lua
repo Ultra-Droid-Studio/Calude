@@ -177,8 +177,8 @@ local function shouldRun(): boolean
 	end
 	local fe = controllers.FrontEndController
 	local state = fe and fe:GetState()
-	if state ~= "Playing" and state ~= "Paused" then
-		return false
+	if state ~= "Playing" and state ~= "Paused" and state ~= "Entering" then
+		return false -- Entering: kamera karaktere inerken şehir canlı olsun
 	end
 	return subjectPart() ~= nil
 end

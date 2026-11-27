@@ -4,6 +4,7 @@
 -- Durumlar:
 --   Title     İlk açılış. Karakter YOK (Players.CharacterAutoLoads = false). Menü kamerası şehri gösterir.
 --   Spawning  OYNA'ya basıldı; sunucudan karakter bekleniyor (tek istek, zaman aşımlı, tekrar denenebilir).
+--   Entering  Karakter hazır; kamera menü çekiminden karakterin omuz hizasına süzülüyor (girişler kilitli).
 --   Playing   Menü kapalı; normal oyun.
 --   Paused    Oyun içinde menü yeniden açıldı (P / D-Pad Sol / dokunmatik ☰). Çok oyunculu dünya durmaz;
 --             karakter yerinde kalır, oyun girişleri kilitlenir.
@@ -323,7 +324,7 @@ end
 
 -- Tam ekran harita: oyundaysa menüyü açıp doğrudan HARİTA ekranına geçer
 local function openMap()
-	if state == "Spawning" then
+	if state == "Spawning" or state == "Entering" then
 		return
 	end
 	if state == "Playing" and not openPause() then
@@ -381,6 +382,45 @@ local function enterWorld(token: number)
 		screens.Main:SetStatus(Strings.Get("Status.SpawnFailed"), "error")
 		playSound("Back")
 		return
+	end
+	-- Sinematik giriş: menü solar, kamera şehrin üstündeki menü çekiminden süzülüp karakterin omuz hizasına iner;
+	-- kontroller varışta açılır. ("Hareketi azalt" açıksa ya da uçuş kurulamazsa eski perde geçişi.)
+	if not reduceMotion() then
+		local flew = false
+		local ok, err = pcall(function()
+			local fadeUi = 0.45
+			hideMenu(fadeUi)
+			shell.Backdrop:SetFallbackVisible(false, fadeUi)
+			screens.Main:SetBusy(false)
+			setState("Entering") -- trafik/yayalar başlar, harita ve oyun içi menü henüz kapalı
+			local camera = controllers.CameraController
+			camera:Release(OWNER)
+			setGrade(false)
+			local seconds = camera:FlyToCharacter()
+			flew = true
+			local deadline = os.clock() + seconds + 1.5
+			while camera:IsFlying() and os.clock() < deadline do
+				task.wait()
+			end
+			if token ~= spawnToken or state ~= "Entering" then
+				return
+			end
+			lockGameplay(false)
+			setState("Playing")
+			refreshPauseButton()
+		end)
+		if ok then
+			Log.Info("Oyuna girildi (kamera uçuşu)")
+			return
+		end
+		Log.Error("Kamera uçuşunda hata, perde geçişiyle devam:", err)
+		if flew then
+			-- uçuş başladıysa oyuncuyu kilitli bırakma
+			lockGameplay(false)
+			setState("Playing")
+			refreshPauseButton()
+			return
+		end
 	end
 	-- Perde arkasında: menüyü kapat, girişleri aç, kamerayı karaktere ver
 	local fade = duration(0.35)

@@ -181,3 +181,16 @@ Open **View → Output** and keep it visible. Every log line is prefixed `[S]` (
 - The pause menu **doesn't pause the world** (multiplayer), and it's unavailable inside vehicles.
 - `SolaraMenuFocus` is an invisible anchored part in Workspace. Leave it alone; the server recreates it at start.
 - If you open a place where `Players.CharacterAutoLoads` is still on, the server logs `CharacterAutoLoads açıktı; …kapatılıyor` and fixes it. A player who joined before that line could auto-spawn once; PLAY then just activates that character.
+
+## Ek (27.11.2026): OYNA'ya basınca kamera uçuşu
+Durum: **kod hazır, lint temiz; oyunda test EDİLMEDİ.**
+* Eskiden: OYNA → karakter hazır → ekran kararır → kamera karakterin arkasına yerleşir → perde açılır.
+* Şimdi: OYNA → karakter hazır → menü yazıları solar (0.45 sn) → kamera şehrin üstündeki menü çekiminden kavis
+  çizerek süzülür, karakterin arkasından-üstünden yaklaşıp **omuz hizasındaki oyun kamerasına** oturur
+  (mesafeye göre 2.2–4 sn; başta ve sonda yumuşak). Varış karesi oyun kamerasının kendisi olduğu için sıçrama yok.
+* Uçuş sırasında: yeni durum `Entering` — trafik ve yayalar başlar (şehir canlı görünür), girişler kilitli, harita
+  ve oyun içi menü kapalı, kamera bakış girişi yok sayılır. Varışta kontroller açılır, durum `Playing`.
+* Yaklaşma noktası duvar/bina içine girmez (küre atışıyla kısaltılır).
+* "Hareketi azalt" açıksa ya da uçuş bir hata verirse eski perde geçişi kullanılır.
+* Kod: `CameraController:FlyToCharacter()` / `IsFlying()`, `FrontEndController.enterWorld`, `AmbientController`
+  (Entering'de de çalışır).

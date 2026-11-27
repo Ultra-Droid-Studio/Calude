@@ -66,6 +66,11 @@ local transitionFrom: CFrame? = nil
 local transitionFromFov = 70
 local transitionTime = 0
 local transitionDuration = TRANSITION_TIME
+-- Uçuş (ana menüden oyuna giriş): kamera menü çekiminden kavis çizerek inip karakterin omuz hizasındaki oyun
+-- kamerasına süzülür. Yol her karede canlı hedefe göre hesaplanır → varışta oyun kamerasıyla birebir aynı kare.
+local flight: { From: CFrame, FromFov: number, Time: number, Duration: number }? = nil
+local FLIGHT_APPROACH_BACK = 28 -- stud: son yaklaşma noktası kameranın bakışının bu kadar gerisinde ...
+local FLIGHT_APPROACH_UP = 16 -- ... ve bu kadar yukarısında (karakterin arkasından, üstten süzülerek gelir)
 local autoFollowHeading = false -- araçta: oyuncu kamerayı çevirmezse aracın arkasına döner
 local lastLookInput = 0
 local AUTO_FOLLOW_DELAY = 1.2
@@ -158,6 +163,16 @@ end
 
 local function cancelTransition()
 	transitionFrom = nil
+end
+
+local function smoothStep(t: number): number
+	t = math.clamp(t, 0, 1)
+	return t * t * (3 - 2 * t)
+end
+
+local function smootherStep(t: number): number
+	t = math.clamp(t, 0, 1)
+	return t * t * t * (t * (t * 6 - 15) + 10) -- başta ve sonda hız sıfır: yumuşak kalkış, yumuşak varış
 end
 
 -- Aktif profilin araç çerçevelemesiyle düzeltilmiş değerleri: omuz yüksekliği, mesafe, min, max
@@ -446,7 +461,12 @@ local function stepFollow(dt: number, mode: string)
 		return -- karakter yok (ölüm/yeniden doğma): son kareyi koru
 	end
 
-	applyLookInput(dt, profile)
+	if flight then
+		pendingTouchDelta = Vector2.zero -- uçuş sırasında bakış girişi yok sayılır (varış karesi sabit kalsın)
+		gamepadLook = Vector2.zero
+	else
+		applyLookInput(dt, profile)
+	end
 
 	-- Araç hızı (hız hissi, takip keskinliği)
 	local subjectVelocity = if followSubject then followSubject.AssemblyLinearVelocity else Vector3.zero
@@ -571,7 +591,31 @@ local function stepFollow(dt: number, mode: string)
 
 	local final = CFrame.new(cameraPosition) * rotation * CFrame.Angles(0, 0, vehicleRoll)
 	local fov = currentFov
-	if transitionFrom then
+	if flight then
+		-- Kübik Bezier: başlangıç (menü çekimi) → aynı yükseklikte hedefe doğru → hedefin arkasından-üstünden
+		-- yaklaşma noktası (duvara girmez) → oyun kamerası. Bakış: önce karaktere döner, sonda oyun bakışına oturur.
+		local f = flight :: any
+		f.Time += dt
+		local t = math.clamp(f.Time / f.Duration, 0, 1)
+		local e = smootherStep(t)
+		local p0, p3 = f.From.Position, final.Position
+		local c1 = p0 + Vector3.new(p3.X - p0.X, 0, p3.Z - p0.Z) * 0.45
+		local back = Vector3.new(-final.LookVector.X, 0, -final.LookVector.Z)
+		back = if back.Magnitude > 1e-3 then back.Unit else Vector3.new(0, 0, 1)
+		local c2 = castSafe(pivotPos, p3 + back * FLIGHT_APPROACH_BACK + Vector3.new(0, FLIGHT_APPROACH_UP, 0), 1.5)
+		local u = 1 - e
+		local position = p0 * (u * u * u) + c1 * (3 * u * u * e) + c2 * (3 * u * e * e) + p3 * (e * e * e)
+		local toCharacter = pivotPos - position
+		local lookRot = if toCharacter.Magnitude > 0.5 then CFrame.lookAt(position, pivotPos).Rotation else final.Rotation
+		local rot = f.From.Rotation:Lerp(lookRot, smoothStep(t / 0.35))
+		rot = rot:Lerp(final.Rotation, smoothStep((t - 0.55) / 0.45))
+		if t < 1 then
+			final = CFrame.new(position) * rot
+			fov = MathUtil.Lerp(f.FromFov, currentFov, e)
+		else
+			flight = nil -- vardı: bu kare zaten oyun kamerası
+		end
+	elseif transitionFrom then
 		transitionTime += dt
 		local t = math.clamp(transitionTime / transitionDuration, 0, 1)
 		local e = t * t * (3 - 2 * t)
@@ -735,6 +779,30 @@ function CameraController:SnapBehindCharacter(smooth: boolean?)
 	-- Ani yerleşmede birikmiş bakış girişini at (ör. menüdeyken yapılan dokunmatik kaydırmalar)
 	pendingTouchDelta = Vector2.zero
 	gamepadLook = Vector2.zero
+end
+
+-- Ana menüden oyuna giriş: kamera şu anki karesinden (menü çekimi) karakterin arkasına, omuz hizasındaki oyun
+-- kamerasına süzülür. Önce menünün senaryolu kamerası bırakılmalı (Release). Döndürür: uçuş süresi (sn).
+-- Süre mesafeye göre (2.2–4 sn). "Hareketi azalt" açıksa uçmaz, anında yerleşir (0 döner).
+function CameraController:FlyToCharacter(seconds: number?): number
+	local root = controllers.CharacterController:GetRootPart()
+	local settings = controllers.SettingsController
+	if not root or (settings and settings:Get("ReduceMotion") == true) then
+		flight = nil
+		CameraController:SnapBehindCharacter(false)
+		return 0
+	end
+	CameraController:SnapBehindCharacter(false) -- hedef: karakterin arkası, omuz hizası (geçişi de iptal eder)
+	local from = camera.CFrame
+	local distance = (from.Position - root.Position).Magnitude
+	local d = seconds or math.clamp(1.8 + distance / 600, 2.2, 4)
+	flight = { From = from, FromFov = camera.FieldOfView, Time = 0, Duration = d }
+	return d
+end
+
+-- Uçuş sürüyor mu?
+function CameraController:IsFlying(): boolean
+	return flight ~= nil
 end
 
 -- Anahtar karelerle sinematik geçiş. Bitince (veya hata/zaman aşımında) kamera MUTLAKA geri döner.
