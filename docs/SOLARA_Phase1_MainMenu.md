@@ -183,7 +183,7 @@ Open **View → Output** and keep it visible. Every log line is prefixed `[S]` (
 - If you open a place where `Players.CharacterAutoLoads` is still on, the server logs `CharacterAutoLoads açıktı; …kapatılıyor` and fixes it. A player who joined before that line could auto-spawn once; PLAY then just activates that character.
 
 ## Ek (27.11.2026): OYNA'ya basınca kamera uçuşu
-Durum: **kod hazır, lint temiz; oyunda test EDİLMEDİ.**
+Durum: **kullanıcı oyunda denedi: çalışıyor, beğendi (27.11.2026).**
 * Eskiden: OYNA → karakter hazır → ekran kararır → kamera karakterin arkasına yerleşir → perde açılır.
 * Şimdi: OYNA → karakter hazır → menü yazıları solar (0.45 sn) → kamera şehrin üstündeki menü çekiminden kavis
   çizerek süzülür, karakterin arkasından-üstünden yaklaşıp **omuz hizasındaki oyun kamerasına** oturur
