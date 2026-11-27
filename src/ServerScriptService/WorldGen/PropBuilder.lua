@@ -5,6 +5,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local MapDefinitions = require(ReplicatedStorage.Shared.MapDefinitions)
 local Config = require(ReplicatedStorage.Shared.Config)
+local StreetLights = require(script.Parent.StreetLights) -- 3D sokak lambaları (KMB3D, CC-BY-4.0), içe aktarıldıysa
 
 local PropBuilder = {}
 
@@ -16,6 +17,10 @@ local LAMP_OFF = rgb(170, 170, 160)
 local Props = {}
 
 function Props.lamp(kit, folder, cf: CFrame, p, index: number)
+	-- 3D model içe aktarıldıysa bölgeye uygun lamba tipi; yoksa aşağıdaki eski prosedürel lamba
+	if StreetLights.Place(kit, folder, cf, p, index) then
+		return
+	end
 	local C = kit.Colors
 	kit:Cylinder(folder, 18, 0.7, cf * CFrame.new(0, 9, 0), rgb(60, 62, 66), M.Metal, { CastShadow = false })
 	-- kol: yola doğru (-Z) uzanır, ucunda lamba başlığı

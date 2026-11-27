@@ -156,9 +156,9 @@ function SettingsScreen.new(ctx)
 			self.Focus:Hover(item)
 		end,
 	})
-	Widgets.Label({
+	local persistNote = Widgets.Label({
 		Name = "PersistNote",
-		Text = Strings.Get("Settings.PersistNote"),
+		Text = Strings.Get("Settings.PersistNote") .. "\n" .. Strings.Get("Settings.Credits"), -- model atıfları (CC BY)
 		FontFace = Theme.Fonts.Light,
 		TextSize = Theme.Text.Tiny,
 		TextColor3 = C.TextDim,
@@ -169,6 +169,12 @@ function SettingsScreen.new(ctx)
 		Size = UDim2.new(1, -240, 1, 0),
 		Parent = footer,
 	})
+	-- iki satır (not + model atıfları): dar ekranda alt bilgiye sığsın diye küçülebilir
+	persistNote.TextScaled = true
+	local fit = Instance.new("UITextSizeConstraint")
+	fit.MaxTextSize = Theme.Text.Tiny
+	fit.MinTextSize = 7
+	fit.Parent = persistNote
 
 	-- Başka yerden değişen ayar (ör. V tuşu, sıfırlama) satıra yansısın
 	self._changedConn = self._settings.Changed:Connect(function(key)

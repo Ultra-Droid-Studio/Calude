@@ -15,7 +15,8 @@
 | `place/SOLARA_Fix5_MinimapFrame.rbxlx` | + bug-fix roadmap step 5 (minimap content spilling outside its frame). |
 | `place/SOLARA_Phase6_TrafficAI.rbxlx` | + Phase 6 (traffic and pedestrian AI, sidewalk parser fix). |
 | `place/SOLARA_Cars.rbxlx` | + 3D car models (Quaternius CC0) wired in; they appear once the `.glb` files are imported in Studio (docs/SOLARA_CarPack.md). |
-| `place/SOLARA_City3.rbxlx` | **Current build:** + city expansion stage 3: brand shop signs (box / letters / blade / striped awning), 46 Centro ground-floor shops, art deco / brick / townhouse details, rooftop units, 11 billboards, night lights for signs and shop windows; offline tests PASS, not yet tested in Studio (docs/SOLARA_City3_Facades.md). Open this in Roblox Studio. |
+| `place/SOLARA_StreetLights.rbxlx` | **Current build:** + 3D street lights (KMB3D, CC BY 4.0) by district once `assets/streetlights/StreetLights.glb` is imported into `ServerStorage.StreetLightModels`; old lamps otherwise (docs/SOLARA_StreetLights.md). Open this in Roblox Studio. |
+| `place/SOLARA_City3.rbxlx` | Previous build: city expansion stage 3: brand shop signs (box / letters / blade / striped awning), 46 Centro ground-floor shops, art deco / brick / townhouse details, rooftop units, 11 billboards, night lights for signs and shop windows; offline tests PASS, not yet tested in Studio (docs/SOLARA_City3_Facades.md). |
 | `place/SOLARA_City2.rbxlx` | Previous build: city expansion stage 2, business registry (docs/SOLARA_City2_Businesses.md). |
 | `place/SOLARA_MapStability.rbxlx` | Previous build: + minimap / full map / GPS stability fix (docs/SOLARA_MapStability.md). |
 | `place/SOLARA_MobileCamera.rbxlx` | Previous build: + mobile fix: the Roblox movement joystick no longer turns the camera; camera turns only by dragging elsewhere (docs/SOLARA_MobileCamera.md). |
@@ -24,7 +25,7 @@
 | `assets/carpack/` | Converted car pack: `<Car>.glb` for Studio's Import 3D, `carpack.json`, `LICENSE.txt` (CC0). |
 | `tools/build_place.py` | Writes `src/` into a place file. Existing scripts get their Source replaced, missing scripts/folders are inserted, nothing is deleted, and the output is verified. |
 | `tools/place_patches.json` | Explicit property changes applied by the build (for example `Players.CharacterAutoLoads`). |
-| `docs/` | Phase 0 audit, Phase 1 notes, Phase 2 car physics report + test course procedure, Phase 3 driving UI, Phase 4 navigation, Phase 6 traffic AI, car pack, Living City (`SOLARA_LivingCity.md`), vehicle stability (`SOLARA_VehicleStability*.md`), mobile camera (`SOLARA_MobileCamera.md`), map/GPS stability (`SOLARA_MapStability.md`), city expansion plan + stages (`SOLARA_CityExpansion_Plan.md`, `SOLARA_City2_Businesses.md`, `SOLARA_City3_Facades.md`). |
+| `docs/` | Phase 0 audit, Phase 1 notes, Phase 2 car physics report + test course procedure, Phase 3 driving UI, Phase 4 navigation, Phase 6 traffic AI, car pack, Living City (`SOLARA_LivingCity.md`), vehicle stability (`SOLARA_VehicleStability*.md`), mobile camera (`SOLARA_MobileCamera.md`), map/GPS stability (`SOLARA_MapStability.md`), city expansion plan + stages (`SOLARA_CityExpansion_Plan.md`, `SOLARA_City2_Businesses.md`, `SOLARA_City3_Facades.md`), 3D street lights (`SOLARA_StreetLights.md`), credits (`CREDITS.md`). |
 | `tools/test_driving_layout.py` | Runs the real `DrivingLayout.lua` (needs `pip install lupa`) over 184 screen/option combinations: overlap, bounds, 44 px touch targets. |
 | `tools/test_navigation.py` | Runs the real `Navigation.lua` on the real `MapDefinitions` data (needs `lupa`): 1260 routes, snapping, unreachable cases, simulated drives with rerouting. |
 | `tools/test_ambient.py` | Runs the real traffic/pedestrian modules on the real MapData (needs `lupa`): lane and sidewalk graphs, 10 min downtown with flow metrics, extra seeds, blocked lane, closed junction exit, jaywalking player, moving player, two players, night/noon, density presets, signal plans, building entrances, procedural walk (foot sliding). `tools/ambient_data.py` loads the map for it. |
@@ -36,5 +37,5 @@
 Rebuild the place after editing `src/`:
 
 ```
-python3 tools/build_place.py place/SOLARA_Phase3.rbxlx src place/SOLARA_City3.rbxlx --patches tools/place_patches.json
+python3 tools/build_place.py place/SOLARA_Phase3.rbxlx src place/SOLARA_StreetLights.rbxlx --patches tools/place_patches.json
 ```

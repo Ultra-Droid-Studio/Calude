@@ -1,0 +1,6 @@
+"Various Low-Poly Street Lights" by KMB3D
+https://sketchfab.com/3d-models/various-low-poly-street-lights-1173b0c4d9b0400bbeaafbee0e94ca59
+Licensed under Creative Commons Attribution 4.0 International (CC BY 4.0): https://creativecommons.org/licenses/by/4.0/
+
+Modified for SOLARA (tools/streetlights_convert.py): split into 8 separate lamps, re-centred on the pole base,
+rotated so the arm points to the road, materials simplified. StreetLights.glb is this modified version.
