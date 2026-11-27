@@ -1,0 +1,18 @@
+Patrol.glb
+  Based on "Police car" by Mateusz Woliński
+  https://sketchfab.com/3d-models/police-car-9166b13b6ae341f4bfc093edb71d74f4
+  Licensed under Creative Commons Attribution 4.0 International (CC BY 4.0): https://creativecommons.org/licenses/by/4.0/
+  Modified for SOLARA (tools/car_prepare.py): fewer triangles (texture-preserving decimation), grille badge covered
+  in the texture, wheels kept as separate parts, parts renamed.
+
+Vento.glb
+  Based on "(FREE) Porsche 911 Carrera 4S" by Karol Miklas
+  https://sketchfab.com/3d-models/free-porsche-911-carrera-4s-d01b254483794de3819786d93e0e1ebf
+  Licensed under Creative Commons Attribution-ShareAlike 4.0 International (CC BY-SA 4.0):
+  https://creativecommons.org/licenses/by-sa/4.0/
+  Modified for SOLARA (tools/car_prepare.py): fewer triangles (texture-preserving decimation), crest, lettering and
+  licence plates removed (geometry and texture), clear-coat shell and baked shadow plane removed, wheels split per side,
+  parts renamed. This modified model (Vento.glb) is licensed under CC BY-SA 4.0 as well.
+
+"Porsche" and "911" are trademarks of their owner; they are not used in the game and the marks were removed from
+the model. The car is called "Vento" in SOLARA.

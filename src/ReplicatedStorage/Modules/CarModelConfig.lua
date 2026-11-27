@@ -1,40 +1,41 @@
 -- CarModelConfig: dış 3D otomobil modelleri.
--- Kaynak: "LowPoly Cars" — Quaternius (https://quaternius.com), lisans CC0 1.0 (kamu malı; ticari kullanım serbest,
--- atıf zorunlu değil; jenerikte "Araba modelleri: Quaternius" yazılması önerilir).
---
--- Akış: tools/carpack_convert.py → assets/carpack/<Ad>.glb → Studio "Import 3D" → ReplicatedStorage.VehicleModels.<Ad>
--- (Model; içinde parça başına bir MeshPart: Paint, Paint2, Glass, Dark, Trim, Headlight, TailLight, SirenWhite,
--- SirenBlue, Wheel_FL_Tire, Wheel_FL_Rim, ...). Model yoksa araçlar eski kutu görünümle çalışır.
+-- Modeller (orijinal görünüm: doku, malzeme ve renkler aynen; tools/car_prepare.py üçgenleri azaltır, logo ve
+-- plakaları çıkarır, tekerlekleri ayırır):
+--   Patrol — "Police car", Mateusz Woliński (Sketchfab), CC BY 4.0
+--   Vento  — "(FREE) Porsche 911 Carrera 4S", Karol Miklas (Sketchfab), CC BY-SA 4.0 (değiştirilmiş hali de aynı lisansla)
+-- Akış: assets/cars/<Ad>.glb → Studio "Import 3D" → ReplicatedStorage.VehicleModels.<Ad> (Model; parçalar:
+-- Wheel_<FL|FR|RL|RR>_<Tire|Rim|...> tekerlekler (döner), Paint (Vento boyası, aracın rengini alır), Keep_* diğer her
+-- şey (olduğu gibi)). Model yoksa araçlar eski kutu görünümle çalışır.
 -- Sadece GÖRÜNÜM değişir: fizik (şasi, yaylar, fizik tekerleri, çarpışma kabuğu) VehicleDefinitions'tan aynen gelir.
+-- (Eski Quaternius "LowPoly Cars" paketi kullanıcının isteğiyle kaldırıldı.)
 
 return {
 	Folder = "VehicleModels", -- ReplicatedStorage altında
-	Credit = "Araba modelleri: Quaternius (CC0)",
+	Credit = "Araba modelleri: Mateusz Woliński (CC BY 4.0), Karol Miklas (CC BY-SA 4.0)",
 
-	-- VehicleDefinitions kimliği → model(ler). Birden fazlaysa araç doğarken rastgele seçilir.
+	-- VehicleDefinitions kimliği → model(ler). Birden fazlaysa araç doğarken rastgele seçilir. Oyuncunun sürdüğü
+	-- araçlar da trafik de buradan. (suv_terra, pickup_mesa, van_porter, utility_brisa: model yok → kutu görünüm)
 	ByDefinition = {
-		compact_pico = { "NormalCar2" },
-		sedan_vela = { "NormalCar1" },
-		sports_rayo = { "SportsCar", "SportsCar2" },
-		suv_terra = { "SUV" },
-		-- pickup_mesa, van_porter, utility_brisa: pakette karşılığı yok → kutu görünüm
+		compact_pico = { "Vento" },
+		sedan_vela = { "Vento" },
+		sports_rayo = { "Vento" },
 	},
 
 	-- Sadece trafikte (NPC) görülen özel varyantlar: hangi tanımın sürüş ölçüleriyle, hangi olasılıkla
 	TrafficVariants = {
-		sedan_vela = { { Model = "Taxi", Chance = 0.15 } },
+		sedan_vela = { { Model = "Patrol", Chance = 0.12 } },
 	},
 
 	-- Orijinal görünümlü (dokulu) modeller: rolü olmayan parçalar ("Keep") ve Paint dışındaki roller içe aktarıldığı
 	-- gibi kalır (renk, malzeme, doku). Tekerlekler yine Wheel_<FL|FR|RL|RR>_<Tire|Rim> adıyla bulunur ve döner.
 	-- Yalnız "Paint" adlı parçalar aracın renk listesinden boyanır (FixedPaint değilse).
-	Original = {},
+	Original = { Patrol = true, Vento = true },
 
 	-- Boyası değişmeyen modeller (taksi sarısı, polis siyah-beyazı); diğerlerinde Paint = aracın renk listesinden
-	FixedPaint = { Taxi = true, Cop = true },
+	FixedPaint = { Patrol = true },
 
 	-- Paint2 (ikinci gövde rengi): "Darker" = boyanın koyusu, yoksa orijinal renk
-	Paint2Rule = { SportsCar = "Darker" },
+	Paint2Rule = {},
 
 	-- Parça rolü → malzeme ve saydamlık
 	Roles = {
@@ -51,14 +52,8 @@ return {
 		Rim = { Material = Enum.Material.Metal },
 	},
 
-	-- Modellerin orijinal renkleri (tools/carpack_convert.py → assets/carpack/carpack.json, sRGB)
+	-- Orijinal görünümlü modellerde sadece Paint rengi kullanılır (FixedPaint ya da renk verilmezse)
 	Colors = {
-		Cop = { Dark = Color3.fromRGB(31, 31, 31), Glass = Color3.fromRGB(53, 53, 53), Headlight = Color3.fromRGB(231, 165, 100), Paint = Color3.fromRGB(216, 216, 216), SirenBlue = Color3.fromRGB(65, 123, 231), SirenWhite = Color3.fromRGB(231, 231, 231), TailLight = Color3.fromRGB(231, 86, 77), Trim = Color3.fromRGB(124, 124, 124), Tire = Color3.fromRGB(31, 31, 31), Rim = Color3.fromRGB(124, 124, 124) },
-		NormalCar1 = { Dark = Color3.fromRGB(31, 31, 31), Glass = Color3.fromRGB(53, 53, 53), Headlight = Color3.fromRGB(231, 165, 100), Paint = Color3.fromRGB(159, 194, 231), TailLight = Color3.fromRGB(231, 86, 77), Trim = Color3.fromRGB(124, 124, 124), Tire = Color3.fromRGB(31, 31, 31), Rim = Color3.fromRGB(124, 124, 124) },
-		NormalCar2 = { Dark = Color3.fromRGB(31, 31, 31), Glass = Color3.fromRGB(53, 53, 53), Headlight = Color3.fromRGB(231, 165, 100), Paint = Color3.fromRGB(199, 216, 231), Paint2 = Color3.fromRGB(231, 231, 231), TailLight = Color3.fromRGB(231, 86, 77), Trim = Color3.fromRGB(124, 124, 124), Tire = Color3.fromRGB(31, 31, 31), Rim = Color3.fromRGB(124, 124, 124) },
-		SUV = { Dark = Color3.fromRGB(31, 31, 31), Glass = Color3.fromRGB(53, 53, 53), Headlight = Color3.fromRGB(231, 165, 100), Paint = Color3.fromRGB(218, 218, 218), TailLight = Color3.fromRGB(231, 86, 77), Trim = Color3.fromRGB(124, 124, 124), Tire = Color3.fromRGB(31, 31, 31), Rim = Color3.fromRGB(124, 124, 124) },
-		SportsCar = { Glass = Color3.fromRGB(53, 53, 53), Headlight = Color3.fromRGB(231, 204, 116), Paint = Color3.fromRGB(231, 156, 92), Paint2 = Color3.fromRGB(218, 147, 87), TailLight = Color3.fromRGB(231, 86, 77), Trim = Color3.fromRGB(124, 124, 124), Tire = Color3.fromRGB(31, 31, 31), Rim = Color3.fromRGB(124, 124, 124) },
-		SportsCar2 = { Glass = Color3.fromRGB(53, 53, 53), Headlight = Color3.fromRGB(231, 165, 100), Paint = Color3.fromRGB(216, 216, 216), TailLight = Color3.fromRGB(231, 86, 77), Trim = Color3.fromRGB(110, 110, 110), Tire = Color3.fromRGB(31, 31, 31), Rim = Color3.fromRGB(110, 110, 110) },
-		Taxi = { Dark = Color3.fromRGB(31, 31, 31), Glass = Color3.fromRGB(53, 53, 53), Headlight = Color3.fromRGB(231, 165, 100), Paint = Color3.fromRGB(231, 201, 67), TailLight = Color3.fromRGB(231, 86, 77), Trim = Color3.fromRGB(124, 124, 124), Tire = Color3.fromRGB(31, 31, 31), Rim = Color3.fromRGB(124, 124, 124) },
+		Vento = { Paint = Color3.fromRGB(168, 168, 168) }, -- kaynağın gümüş boyası
 	},
 }
