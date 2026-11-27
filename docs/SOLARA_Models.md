@@ -1,8 +1,8 @@
 # SOLARA — Kullanıcının modelleri: arabalar, trafik ışıkları, sokak lambaları, yayalar
 
-Durum: **kod, modeller ve yükleme betiği hazır; çevrimdışı testler PASS. Modeller henüz Roblox'a yüklenmedi; oyunda
-(Studio'da ya da yayında) test EDİLMEDİ.**
-Derleme: `place/SOLARA_Models.rbxlx` (önceki her şey + bu değişiklikler; model numaraları 0, betik doldurur).
+Durum: **kod, modeller ve yükleme betiği hazır; çevrimdışı testler PASS. Modeller kullanıcı tarafından Roblox'a
+yüklendi (27.11.2026; numaralar `WorldGen/AssetIds.lua`'da). Oyunda (Studio'da ya da yayında) henüz doğrulanmadı.**
+Derleme: `place/SOLARA_Models.rbxlx` (önceki her şey + bu değişiklikler + 4 model numarası).
 
 ## Ne geldi
 | | Model (kullanıcının zip'inden) | Oyunda |
