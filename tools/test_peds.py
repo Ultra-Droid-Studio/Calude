@@ -14,6 +14,9 @@ rotations and origins, with the bones under the mesh, under an own part, or unde
   [5] the same character looks the same for every import transform and bone layout
   [6] a full walk cycle (PedAnim.Step) deforms the mesh smoothly: no torn / flung vertices, feet stay planted
   [7] PedRenderer uses the realistic models when present (else the R15 pedestrians), places the root at RootY
+  [8] crash: limb bodies + angle-limited joints, no pose jump at the hit, every bone follows its limb body
+  [9] settles when still, gets up in 0.9 s back to the standing pose on the root (welds back, limb bodies gone)
+  [10] pooled while down: Reset cleans up; PedRenderer flow (knock down / get up) incl. the R15 fallback
 Writes docs/pedestrians_walk_preview.png: frames of the walk cycle rendered from the skinned mesh the game would show.
 Usage: python3 -I tools/test_peds.py <lupa-site-packages>
 """
@@ -427,6 +430,164 @@ PR0 = lua0.execute(PR_SRC)
 PR0.Init()
 m0 = PR0.Acquire()
 check("[7] without the models: the R15 pedestrians", RIG0.Available() is False and m0.FindFirstChild(m0, "Head") is not None)
+
+# --- [8]-[10] ragdoll (crash), getting up, reset
+RAG = r"""function(RIG, PedAnim, rig, model)
+  local out = {}
+  local function bonesWorld()
+    local w = {}
+    for _, b in ipairs(rig.Order) do w[b] = b.TransformedWorldCFrame end
+    return w
+  end
+  local function maxDiff(a, b)
+    local m = 0
+    for bone, cf in pairs(a) do
+      local d = (cf.Position - b[bone].Position).Magnitude
+      if d > m then m = d end
+    end
+    return m
+  end
+  -- walking pose at the moment of the hit
+  local st = PedAnim.new(0.5)
+  for i = 1, 12 do RIG.Pose(rig, PedAnim.Step(st, 1 / 30, 4.6 / rig.Scale, 0, 0)) end
+  local before = bonesWorld()
+  local rootWelds = 0
+  for _, p in ipairs(rig.Parts) do for _, c in ipairs(p:GetChildren()) do if c._cls == "WeldConstraint" then rootWelds = rootWelds + 1 end end end
+  RIG.Ragdoll(rig, model, Vector3.new(30, 14, 0), Vector3.new(1, 0, 2))
+  local nParts, nSock, nNoCol, nWeldOff = 0, 0, 0, 0
+  for _, d in ipairs(model:GetDescendants()) do
+    if d._cls == "Part" and string.sub(d.Name, 1, 8) == "Ragdoll_" then nParts = nParts + 1 end
+    if d._cls == "BallSocketConstraint" then nSock = nSock + 1 end
+    if d._cls == "NoCollisionConstraint" then nNoCol = nNoCol + 1 end
+    if d._cls == "WeldConstraint" and d.Enabled == false then nWeldOff = nWeldOff + 1 end
+  end
+  out.Parts, out.Sockets, out.NoCol, out.WeldOff, out.RootWelds = nParts, nSock, nNoCol, nWeldOff, rootWelds
+  local hips = rig.Rag.Parts.Hips
+  out.Velocity = hips.AssemblyLinearVelocity.X
+  RIG.StepRagdoll(rig, 1 / 60)
+  out.Pop = maxDiff(before, bonesWorld()) -- no jump at the moment of the hit
+  -- "physics": the body falls on its back 2 studs lower, a thigh swings
+  local fall = CFrame.new(0, -2, 1) * CFrame.Angles(math.rad(-80), 0, 0)
+  local pivot = hips.CFrame.Position
+  for _, p in pairs(rig.Rag.Parts) do
+    p.CFrame = CFrame.new(pivot) * fall * CFrame.new(-pivot) * p.CFrame
+  end
+  local th = rig.Rag.Parts.LThigh
+  th.CFrame = th.CFrame * CFrame.Angles(0.6, 0, 0)
+  RIG.StepRagdoll(rig, 1 / 60)
+  local follow = 0
+  for b, d in pairs(rig.Rag.Drive) do
+    local diff = (b.TransformedWorldCFrame.Position - (d.Part.CFrame * d.Offset).Position).Magnitude
+    if diff > follow then follow = diff end
+  end
+  out.Follow = follow
+  -- settles once still
+  for _, p in pairs(rig.Rag.Parts) do p.AssemblyLinearVelocity = Vector3.new(0, 0, 0) end
+  local settled, hipsPos, frames = false, nil, 0
+  while not settled and frames < 400 do settled, hipsPos = RIG.StepRagdoll(rig, 1 / 30); frames = frames + 1 end
+  out.Settled, out.SettleTime = settled, frames / 30
+  -- get up at the body's place, facing +X
+  local standing = CFrame.lookAt(Vector3.new(hipsPos.X, 3 + rig.RootY, hipsPos.Z), Vector3.new(hipsPos.X + 1, 3 + rig.RootY, hipsPos.Z))
+  RIG.StartGetUp(rig, standing)
+  local done, n = false, 0
+  while not done and n < 200 do done = RIG.StepGetUp(rig, 1 / 30); n = n + 1 end
+  out.GetUpTime = n / 30
+  local left = 0
+  for _, d in ipairs(model:GetDescendants()) do
+    if string.sub(d.Name, 1, 8) == "Ragdoll_" or d._cls == "BallSocketConstraint" then left = left + 1 end
+  end
+  out.Left = left
+  local meshErr = 0
+  for _, p in ipairs(rig.Parts) do
+    local want = standing * rig.PartOffset[p]
+    meshErr = math.max(meshErr, (p.CFrame.Position - want.Position).Magnitude)
+  end
+  out.MeshErr = meshErr
+  local tErr = 0
+  for _, d in pairs(rig.Drive) do
+    local want = d.M1 * d.M2
+    tErr = math.max(tErr, (d.Bone.Transform.Position - want.Position).Magnitude,
+      (d.Bone.Transform.LookVector - want.LookVector).Magnitude)
+  end
+  out.PoseErr = tErr
+  local welds = 0
+  for _, p in ipairs(rig.Parts) do for _, c in ipairs(p:GetChildren()) do if c._cls == "WeldConstraint" and c.Enabled ~= false then welds = welds + 1 end end end
+  out.WeldsBack = welds
+  out.RootPos = rig.Root.CFrame.Position
+  -- crash again, then pooled mid-air (Reset)
+  RIG.Ragdoll(rig, model, Vector3.new(0, 10, 20))
+  RIG.Reset(rig)
+  local left2 = 0
+  for _, d in ipairs(model:GetDescendants()) do
+    if string.sub(d.Name, 1, 8) == "Ragdoll_" then left2 = left2 + 1 end
+  end
+  out.ResetLeft, out.ResetRag = left2, rig.Rag ~= nil
+  return out
+end"""
+rag = lua.eval(RAG)
+bad = []
+for name in PED_NAMES[:3] + PED_NAMES[-2:]:
+    model, rig = per[name]
+    RIG.Neutral(rig)
+    o = rag(RIG, PedAnim, rig, model)
+    if (o.Parts, o.Sockets, o.NoCol) != (11, 10, 55) or o.WeldOff != o.RootWelds or o.Velocity != 30:
+        bad.append(f"{name} build: parts {o.Parts} sockets {o.Sockets} nocol {o.NoCol} welds off {o.WeldOff}/{o.RootWelds}")
+    if o.Pop > 1e-4:
+        bad.append(f"{name} pose jumps {o.Pop:.4f} studs at the hit")
+    if o.Follow > 1e-4:
+        bad.append(f"{name} bones lag their limbs by {o.Follow:.4f}")
+    ragdoll_info = o
+check("[8] crash: 11 limb bodies, 10 joints (angle-limited), no self-collision, model leaves the root and flies with "
+      "the car's speed; no pose jump at the hit; every bone follows its limb", not bad, "; ".join(bad[:3]))
+o = ragdoll_info  # (the last character's run; all five ran the same flow above)
+check("[9] settles when still (~1.6 s), gets up in 0.9 s: limbs removed, model back on the root standing at the "
+      "body's place, neutral pose, root welds back",
+      o.Settled and o.SettleTime < 3 and 0.8 < o.GetUpTime < 1.1 and o.Left == 0 and o.MeshErr < 1e-4 and o.PoseErr < 1e-4
+      and o.WeldsBack == o.RootWelds,
+      f"settle {o.SettleTime:.2f} s, get up {o.GetUpTime:.2f} s, left {o.Left}, mesh {o.MeshErr:.5f}, pose {o.PoseErr:.5f}, "
+      f"welds {o.WeldsBack}/{o.RootWelds}")
+check("[10] pooled while flying: Reset removes the limb bodies", o.ResetLeft == 0 and o.ResetRag is False)
+
+# PedRenderer: knock down, get up (realistic) and the R15 fallback
+PR2 = lua.execute(PR_SRC)
+PR2.Init()
+m = PR2.Acquire()
+flow = lua.eval("""function(PR, m)
+  PR.Place(m, Vector3.new(10, 3, 10), 0, -1)
+  PR.Knockdown(m, Vector3.new(25, 12, 0))
+  local settled, pos = false, nil
+  for i = 1, 300 do
+    for _, d in ipairs(m:GetDescendants()) do if string.sub(d.Name, 1, 8) == "Ragdoll_" then d.AssemblyLinearVelocity = Vector3.new() end end
+    settled, pos = PR.StepDown(m, 1 / 30)
+    if settled then break end
+  end
+  PR.StartGetUp(m, Vector3.new(pos.X, 3, pos.Z), 1, 0)
+  local done = false
+  for i = 1, 100 do done = PR.StepGetUp(m, 1 / 30); if done then break end end
+  return settled, done, m.PrimaryPart.CFrame.Position.Y
+end""")
+settled, done, ry = flow(PR2, m)
+check("[10] PedRenderer: realistic pedestrian knocked down, settles, gets up standing on the ground",
+      settled and done and abs(ry - 3 - rig.RootY) < 0.5, f"root y {ry:.2f}")
+flow0 = lua0.eval("""function(PR, m)
+  PR.Place(m, Vector3.new(0, 3, 0), 0, -1)
+  PR.Knockdown(m, Vector3.new(20, 10, 0))
+  local off, socks = 0, 0
+  for _, d in ipairs(m:GetDescendants()) do
+    if d._cls == "Motor6D" and d.Enabled == false then off = off + 1 end
+    if d._cls == "BallSocketConstraint" then socks = socks + 1 end
+  end
+  PR.StartGetUp(m, Vector3.new(5, 3, 5), 0, -1)
+  local on, left = 0, 0
+  for _, d in ipairs(m:GetDescendants()) do
+    if d._cls == "Motor6D" and d.Enabled ~= false then on = on + 1 end
+    if d._cls == "BallSocketConstraint" then left = left + 1 end
+  end
+  return off, socks, on, left
+end""")
+off, socks, on, left = flow0(PR0, m0)
+check("[10] R15 fallback: joints become ball sockets when hit, motors back after getting up", off >= 13 and socks == off
+      and left == 0 and on >= 14, f"motors off {off}, sockets {socks}, back on {on}, left {left}")
 
 # --- preview of the walk
 try:

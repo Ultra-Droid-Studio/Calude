@@ -626,6 +626,50 @@ function TrafficSim:_trySpawn(ctx)
 	return true
 end
 
+-- Kazadan toparlanan aracı trafiğe geri kat (Şehir: çarpışmadan sonra yoluna devam). Araç (x, z) noktasında,
+-- (hx, hz) yönüne bakıyor; aynı yöndeki en yakın şeride (uzaklık ≤ maxDist), durma çizgisinin önüne (geçmişse geri
+-- alınarak), önünde ve arkasında yer varsa konur (hız 0; IDM ile kalkar). Bulunamazsa nil. Spawned listesine girmez: görseli çağıran
+-- verir (aynı model).
+function TrafficSim:Rejoin(kind, x, z, hx, hz, maxDist)
+	maxDist = maxDist or 14
+	local best, bestS, bestD = nil, 0, maxDist
+	for _, lane in ipairs(self.TG.LanesNear(self.Graph, x, z, maxDist + 30)) do
+		local limit = lane.StopS - kind.Length / 2 - 2 -- durma çizgisinin önünde kal (kavşak kutusuna konmaz)
+		if lane.UX * hx + lane.UZ * hz > 0.5 and #lane.Out > 0 and limit >= 4 then
+			local ox, oz = x - lane.X0, z - lane.Z0
+			local along = ox * lane.UX + oz * lane.UZ
+			local s = clamp(along, 4, limit) -- çizgiyi geçmişse birkaç stud geri alınır
+			local lat = ox * lane.RX + oz * lane.RZ
+			local d = sqrt(lat * lat + (along - s) * (along - s))
+			if d < bestD then
+				best, bestS, bestD = lane, s, d
+			end
+		end
+	end
+	if not best then
+		return nil
+	end
+	for _, w in ipairs(best.Vehicles) do
+		if abs(w.S - bestS) < (w.Len + kind.Length) / 2 + 6 then
+			return nil -- yer yok (önde/arkada araç)
+		end
+	end
+	local cfg = self.Cfg
+	local px, py, pz = self.TG.LanePoint(best, bestS)
+	local v = {
+		Id = self.NextId, Kind = kind, Len = kind.Length, Width = kind.Width,
+		Seg = best, OnConn = false, S = bestS, V = 0, Factor = cfg.SpeedFactor[1] + self.Rng() * (cfg.SpeedFactor[2] - cfg.SpeedFactor[1]),
+		Lat = 0, LatRate = 0, Blocked = 0, StopTimer = 0, State = "Sür", Brake = false, Accel = 0, Stuck = 0, Held = 0,
+		X = px, Y = py, Z = pz, HX = best.UX, HZ = best.UZ,
+	}
+	self.NextId = self.NextId + 1
+	v.Next = self:_pickNext(best)
+	insertSorted(best.Vehicles, v)
+	self.Vehicles[#self.Vehicles + 1] = v
+	self.Stats.Rejoins = (self.Stats.Rejoins or 0) + 1
+	return v
+end
+
 function TrafficSim:Remove(v, reason)
 	if v.Removed then
 		return

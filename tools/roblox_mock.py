@@ -84,6 +84,7 @@ Obj.__newindex = function(t, k, v)
 end
 function new(cls, props)
   local o = setmetatable({_cls = cls, _p = {Name = cls}, _c = {}, _a = {}}, Obj)
+  if string.find(cls, "Constraint$") or cls == "Motor6D" or cls == "Weld" then o._p.Enabled = true end -- Roblox default
   for k, v in pairs(props or {}) do o[k] = v end
   return o
 end
@@ -108,18 +109,66 @@ function methods.SetAttribute(t, k, v) t._a[k] = v end
 function methods.GetAttribute(t, k) return t._a[k] end
 Instance = { new = function(cls) return new(cls) end }
 
--- extras used by SignalRenderer
-function CFrame.lookAt(at, target)
+-- extras used by SignalRenderer / PedMeshRig
+function CFrame.lookAt(at, target, up)
   local f = (target - at).Unit
-  local r = f:Cross(Vector3.new(0, 1, 0)).Unit
+  local upv = up or Vector3.new(0, 1, 0)
+  local r = f:Cross(upv)
+  if r.Magnitude < 1e-6 then r = f:Cross(Vector3.new(1, 0, 0)) end
+  if r.Magnitude < 1e-6 then r = f:Cross(Vector3.new(0, 0, 1)) end
+  r = r.Unit
   local u = r:Cross(f)
   return CFrame.fromMatrix(at, r, u)
+end
+-- rotation matrix <-> quaternion (for Lerp = slerp, like Roblox)
+local function toQuat(r)
+  local m00, m01, m02, m10, m11, m12, m20, m21, m22 = r[1], r[2], r[3], r[4], r[5], r[6], r[7], r[8], r[9]
+  local tr_ = m00 + m11 + m22
+  local w, x, y, z
+  if tr_ > 0 then
+    local s = math.sqrt(tr_ + 1) * 2
+    w, x, y, z = s / 4, (m21 - m12) / s, (m02 - m20) / s, (m10 - m01) / s
+  elseif m00 > m11 and m00 > m22 then
+    local s = math.sqrt(1 + m00 - m11 - m22) * 2
+    w, x, y, z = (m21 - m12) / s, s / 4, (m01 + m10) / s, (m02 + m20) / s
+  elseif m11 > m22 then
+    local s = math.sqrt(1 + m11 - m00 - m22) * 2
+    w, x, y, z = (m02 - m20) / s, (m01 + m10) / s, s / 4, (m12 + m21) / s
+  else
+    local s = math.sqrt(1 + m22 - m00 - m11) * 2
+    w, x, y, z = (m10 - m01) / s, (m02 + m20) / s, (m12 + m21) / s, s / 4
+  end
+  return w, x, y, z
+end
+local function fromQuat(w, x, y, z)
+  local n = math.sqrt(w * w + x * x + y * y + z * z)
+  w, x, y, z = w / n, x / n, y / n, z / n
+  return {1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w),
+          2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w),
+          2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)}
 end
 local oldIndex = CF.__index
 CF.__index = function(c, k)
   if k == "Inverse" then return function(self) local it = tr(self.R); return mk(-mv(it, self.P), it) end end
+  if k == "RightVector" then return Vector3.new(c.R[1], c.R[4], c.R[7]) end
+  if k == "UpVector" then return Vector3.new(c.R[2], c.R[5], c.R[8]) end
+  if k == "Lerp" then return function(a, b, t)
+    local aw, ax, ay, az = toQuat(a.R)
+    local bw, bx, by, bz = toQuat(b.R)
+    local dot = aw * bw + ax * bx + ay * by + az * bz
+    if dot < 0 then bw, bx, by, bz, dot = -bw, -bx, -by, -bz, -dot end
+    local k0, k1
+    if dot > 0.9995 then k0, k1 = 1 - t, t
+    else
+      local th = math.acos(dot)
+      k0, k1 = math.sin((1 - t) * th) / math.sin(th), math.sin(t * th) / math.sin(th)
+    end
+    local p = a.P + (b.P - a.P) * t
+    return mk(p, fromQuat(aw * k0 + bw * k1, ax * k0 + bx * k1, ay * k0 + by * k1, az * k0 + bz * k1))
+  end end
   return oldIndex(c, k)
 end
+PhysicalProperties = { new = function(...) return { ... } end }
 function methods.PivotTo(t, target)
   local pp = t.PrimaryPart
   local delta = target * pp.CFrame:Inverse()
@@ -159,6 +208,7 @@ Obj.__index = function(t, k)
       return cf
     end
     if k == "WorldPosition" then return t.WorldCFrame.Position end
+    if k == "Transform" then return p.Transform or CFrame.new() end -- Roblox: identity until set
   end
   return baseIndex(t, k)
 end

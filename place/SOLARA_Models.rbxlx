@@ -14472,6 +14472,51 @@ function PedSim:_trySpawn(ctx)
 	return true
 end
 
+-- Kazadan sonra ayağa kalkan yayayı yeniden yürüt (aynı görünüm: seed, hız). (x, z) noktasına en yakın kaldırım
+-- bağlantısına (karşıya geçiş değil, ≤ maxDist) konur, (hx, hz) yönüne en yakın uçtan devam eder. Bulunamazsa nil.
+-- Spawned listesine girmez: görseli çağıran verir (aynı model).
+function PedSim:Rejoin(x, z, hx, hz, seed, speed, maxDist)
+	maxDist = maxDist or 18
+	local best, bestT, bestD = nil, 0, maxDist * maxDist
+	for _, link in ipairs(self.PG.LinksNear(self.Graph, x, z, maxDist)) do
+		if not link.Crossing and not link.Door and link.Length > 0.5 then
+			local ax, az = link.A.X, link.A.Z
+			local dx, dz = link.B.X - ax, link.B.Z - az
+			local t = clamp(((x - ax) * dx + (z - az) * dz) / (dx * dx + dz * dz), 0, 1)
+			local qx, qz = ax + dx * t, az + dz * t
+			local d2 = (qx - x) ^ 2 + (qz - z) ^ 2
+			if d2 < bestD then
+				best, bestT, bestD = link, t, d2
+			end
+		end
+	end
+	if not best then
+		return nil
+	end
+	local dx, dz = best.B.X - best.A.X, best.B.Z - best.A.Z
+	local forward = dx * (hx or 0) + dz * (hz or 0) >= 0
+	local from, to = best.A, best.B
+	if not forward then
+		from, to = best.B, best.A
+	end
+	local cfg = self.Cfg
+	local p = {
+		Id = self.NextId, Node = from, X = x, Y = self.Graph.Top, Z = z, HX = hx or 0, HZ = hz or 1,
+		Speed = speed or (cfg.WalkSpeed[1] + self.Rng() * (cfg.WalkSpeed[2] - cfg.WalkSpeed[1])),
+		Lateral = (self.Rng() * 2 - 1) * cfg.SidewalkSpread * 0.7, LatCur = 0, State = "Yürü", Timer = 0, Moving = 0,
+		Seed = seed or self.Rng(), CurSpeed = 0,
+	}
+	self.NextId = self.NextId + 1
+	self:_startLink(p, best, to)
+	p.T = best.Length * (forward and bestT or (1 - bestT))
+	p.X = best.A.X + dx * bestT
+	p.Z = best.A.Z + dz * bestT
+	p.HX, p.HZ = p.DX, p.DZ
+	self.Peds[#self.Peds + 1] = p
+	self.Stats.Rejoins = (self.Stats.Rejoins or 0) + 1
+	return p
+end
+
 function PedSim:Remove(p, reason)
 	if p.Removed then
 		return
@@ -16291,6 +16336,50 @@ function TrafficSim:_trySpawn(ctx)
 	self.Spawned[#self.Spawned + 1] = v
 	self.Stats.Spawns = self.Stats.Spawns + 1
 	return true
+end
+
+-- Kazadan toparlanan aracı trafiğe geri kat (Şehir: çarpışmadan sonra yoluna devam). Araç (x, z) noktasında,
+-- (hx, hz) yönüne bakıyor; aynı yöndeki en yakın şeride (uzaklık ≤ maxDist), durma çizgisinin önüne (geçmişse geri
+-- alınarak), önünde ve arkasında yer varsa konur (hız 0; IDM ile kalkar). Bulunamazsa nil. Spawned listesine girmez: görseli çağıran
+-- verir (aynı model).
+function TrafficSim:Rejoin(kind, x, z, hx, hz, maxDist)
+	maxDist = maxDist or 14
+	local best, bestS, bestD = nil, 0, maxDist
+	for _, lane in ipairs(self.TG.LanesNear(self.Graph, x, z, maxDist + 30)) do
+		local limit = lane.StopS - kind.Length / 2 - 2 -- durma çizgisinin önünde kal (kavşak kutusuna konmaz)
+		if lane.UX * hx + lane.UZ * hz > 0.5 and #lane.Out > 0 and limit >= 4 then
+			local ox, oz = x - lane.X0, z - lane.Z0
+			local along = ox * lane.UX + oz * lane.UZ
+			local s = clamp(along, 4, limit) -- çizgiyi geçmişse birkaç stud geri alınır
+			local lat = ox * lane.RX + oz * lane.RZ
+			local d = sqrt(lat * lat + (along - s) * (along - s))
+			if d < bestD then
+				best, bestS, bestD = lane, s, d
+			end
+		end
+	end
+	if not best then
+		return nil
+	end
+	for _, w in ipairs(best.Vehicles) do
+		if abs(w.S - bestS) < (w.Len + kind.Length) / 2 + 6 then
+			return nil -- yer yok (önde/arkada araç)
+		end
+	end
+	local cfg = self.Cfg
+	local px, py, pz = self.TG.LanePoint(best, bestS)
+	local v = {
+		Id = self.NextId, Kind = kind, Len = kind.Length, Width = kind.Width,
+		Seg = best, OnConn = false, S = bestS, V = 0, Factor = cfg.SpeedFactor[1] + self.Rng() * (cfg.SpeedFactor[2] - cfg.SpeedFactor[1]),
+		Lat = 0, LatRate = 0, Blocked = 0, StopTimer = 0, State = "Sür", Brake = false, Accel = 0, Stuck = 0, Held = 0,
+		X = px, Y = py, Z = pz, HX = best.UX, HZ = best.UZ,
+	}
+	self.NextId = self.NextId + 1
+	v.Next = self:_pickNext(best)
+	insertSorted(best.Vehicles, v)
+	self.Vehicles[#self.Vehicles + 1] = v
+	self.Stats.Rejoins = (self.Stats.Rejoins or 0) + 1
+	return v
 end
 
 function TrafficSim:Remove(v, reason)
@@ -28562,7 +28651,9 @@ local graph, pedGraph, traffic, peds
 local ready = false
 local vehicleModels: { [any]: Model } = {}
 local pedModels: { [any]: Model } = {}
-local wrecks: { { Model: Model, Ped: boolean, Until: number } } = {}
+-- Kaza modelleri: yaya (ragdoll → kalkma → yürümeye devam) ya da araç (fizik → toparlanma → trafiğe dönüş).
+-- Geri dönemeyenler (devrilmiş araç, yol bulamayan yaya) eskisi gibi oyuncu uzaklaşınca havuza döner.
+local wrecks: { any } = {}
 local SIM_DT = 1 / AmbientConfig.SimRate
 local accumulator = 0
 local active = false
@@ -28769,6 +28860,20 @@ local function gatherObstacles(focus: Vector3)
 			end
 		end
 	end
+	-- kaza modelleri: yoldaki kaza aracı ve yerde yatan yaya trafiği durdurur / şerit değiştirtir
+	for _, w in wrecks do
+		local c = w.Model.PrimaryPart
+		if c then
+			local p = if w.Ped then w.Pos or c.Position else c.Position
+			if (p - focus).Magnitude < 400 then
+				table.insert(forTraffic, {
+					X = p.X, Y = p.Y, Z = p.Z, R = if w.Ped then R.Pedestrian else R.Vehicle,
+					Kind = if w.Ped then "Pedestrian" else "Vehicle",
+				})
+				table.insert(forPeds, { X = p.X, Z = p.Z, R = if w.Ped then 1.5 else 3, Kind = if w.Ped then "Player" else "Vehicle", Speed = 0 })
+			end
+		end
+	end
 	for _, p in peds.Peds do
 		if p.State == "Geç" or (p.Link and p.Link.Crossing) then
 			local spd = p.CurSpeed or 0
@@ -28822,13 +28927,22 @@ local function clearAll()
 	for _, p in table.clone(peds.Peds) do
 		peds:Remove(p, "Kapat")
 	end
+	for _, w in wrecks do
+		if w.Ped then
+			PedRenderer.Release(w.Model)
+		else
+			TrafficRenderer.Release(w.Model)
+		end
+	end
+	wrecks = {}
 	syncModels()
 	traffic.Despawned, peds.Despawned = {}, {}
 	SignalRenderer.Update(graph, nil, 0, 0)
 	DoorRenderer.Update(nil, 0)
 end
 
--- ===== Kaza: oyuncunun aracı NPC araca/yayaya çarparsa NPC fiziğe geçer (bu istemcide), sonra havuza döner =====
+-- ===== Kaza: oyuncunun aracı NPC araca/yayaya çarparsa NPC fiziğe geçer (bu istemcide); yaya ragdoll olur,
+-- durulunca kalkıp yürümeye, araç toparlanıp trafiğe döner (updateWrecks) =====
 local function handleCollisions()
 	local current = controllers.VehicleController:GetCurrent()
 	if not current or not current.IsDriver or not current.Chassis then
@@ -28855,7 +28969,10 @@ local function handleCollisions()
 				traffic.Despawned = {}
 				if model then
 					TrafficRenderer.MakePhysical(model, npcVel)
-					table.insert(wrecks, { Model = model, Ped = false, Until = os.clock() + 10 })
+					table.insert(wrecks, {
+						Model = model, Ped = false, Until = os.clock() + 10, Kind = v.Kind, Phase = "Crash", Time = 0,
+						Still = 0, Retry = 0,
+					})
 				end
 			end
 		end
@@ -28869,8 +28986,86 @@ local function handleCollisions()
 				peds:Remove(ped, "Kaza")
 				peds.Despawned = {}
 				if model then
-					PedRenderer.MakePhysical(model, vel * 0.6 + Vector3.new(0, 18, 0))
-					table.insert(wrecks, { Model = model, Ped = true, Until = os.clock() + 8 })
+					PedRenderer.Knockdown(model, vel * 0.65 + Vector3.new(0, 14, 0))
+					table.insert(wrecks, {
+						Model = model, Ped = true, Until = os.clock() + 8, Phase = "Down", Seed = ped.Seed,
+						Speed = ped.Speed, Anim = ped.Anim, HX = ped.HX or 0, HZ = ped.HZ or 1,
+					})
+				end
+			end
+		end
+	end
+end
+
+-- Yer noktası (kaza modelinin altı; NPC'ler ve kaza modelleri hariç)
+local groundParams = RaycastParams.new()
+groundParams.FilterType = Enum.RaycastFilterType.Exclude
+groundParams.IgnoreWater = false
+local function groundUnder(position: Vector3, ignore: Instance): Vector3?
+	groundParams.FilterDescendantsInstances = { ignore, PedRenderer.Folder(), TrafficRenderer.Folder() }
+	local hit = Workspace:Raycast(position + Vector3.new(0, 3, 0), Vector3.new(0, -14, 0), groundParams)
+	return if hit then hit.Position else nil
+end
+
+-- Her kare: kaza modellerini ilerlet
+local function updateWrecks(dt: number)
+	local current = controllers.VehicleController:GetCurrent()
+	local playerCar = current and current.Chassis
+	for i = #wrecks, 1, -1 do
+		local w = wrecks[i]
+		if w.Ped then
+			if w.Phase == "Down" then
+				local settled, hips = PedRenderer.StepDown(w.Model, dt)
+				w.Pos = hips
+				if settled then
+					local ground = groundUnder(hips, w.Model)
+					if ground then
+						w.Ground = ground
+						w.Phase = "GetUp"
+						PedRenderer.StartGetUp(w.Model, ground, w.HX, w.HZ)
+					else
+						w.Phase = "Lying" -- suya/boşluğa düştü: uzaklaşınca kaldırılır
+					end
+				end
+			elseif w.Phase == "GetUp" then
+				if PedRenderer.StepGetUp(w.Model, dt) then
+					local g = w.Ground
+					local p = peds:Rejoin(g.X, g.Z, w.HX, w.HZ, w.Seed, w.Speed, 18)
+					if p then
+						pedModels[p] = w.Model
+						p.Anim = w.Anim or PedAnim.new(w.Seed or math.random())
+						p.PX, p.PY, p.PZ, p.PHX, p.PHZ = p.X, p.Y, p.Z, p.HX, p.HZ
+						-- duruş yerinden kaldırımdaki yürüme çizgisine yumuşak geçiş
+						p.Return = { Offset = g - Vector3.new(p.X, p.Y, p.Z), T = 0, D = 0.9 }
+						table.remove(wrecks, i)
+					else
+						w.Phase = "Standing" -- yakında kaldırım yok: ayakta durur, uzaklaşınca kaldırılır
+						PedRenderer.Neutral(w.Model)
+					end
+				end
+			end
+		elseif w.Phase == "Crash" then
+			w.Time += dt
+			local speed, upright, pos, look = TrafficRenderer.CrashState(w.Model)
+			if speed < 1.5 then
+				w.Still += dt
+			else
+				w.Still = 0
+			end
+			local playerNear = playerCar and (playerCar.Position - pos).Magnitude < 14
+			if w.Time > 1.5 and w.Still > 0.8 and not playerNear then
+				if not upright then
+					w.Phase = "Wreck" -- devrildi: kalır, uzaklaşınca kaldırılır
+				elseif os.clock() >= w.Retry then
+					w.Retry = os.clock() + 1 -- şerit doluysa saniyede bir yeniden dene
+					local v = traffic:Rejoin(w.Kind, pos.X, pos.Z, look.X, look.Z, 14)
+					if v then
+						TrafficRenderer.Recover(w.Model)
+						vehicleModels[v] = w.Model
+						v.PX, v.PY, v.PZ, v.PHX, v.PHZ = v.X, v.Y, v.Z, v.HX, v.HZ
+						v.Return = { Offset = pos - Vector3.new(v.X, v.Y, v.Z), HX = look.X, HZ = look.Z, T = 0, D = 1.2 }
+						table.remove(wrecks, i)
+					end
 				end
 			end
 		end
@@ -29026,6 +29221,21 @@ local function render(dt: number, alpha: number)
 			if hx * hx + hz * hz < 1e-4 then
 				hx, hz = v.HX, v.HZ
 			end
+			local back = v.Return
+			if back then
+				-- kazadan dönüş: modelin durduğu yerden şeritteki yerine yumuşakça
+				back.T += dt
+				local e = math.clamp(back.T / back.D, 0, 1)
+				e = e * e * (3 - 2 * e)
+				x += back.Offset.X * (1 - e)
+				y += back.Offset.Y * (1 - e)
+				z += back.Offset.Z * (1 - e)
+				hx = back.HX + (hx - back.HX) * e
+				hz = back.HZ + (hz - back.HZ) * e
+				if e >= 1 then
+					v.Return = nil
+				end
+			end
 			local pos = Vector3.new(x, y, z)
 			root.CFrame = CFrame.lookAt(pos, pos + Vector3.new(hx, v.Slope or 0, hz))
 			TrafficRenderer.SetBrake(model, v.Brake)
@@ -29051,6 +29261,19 @@ local function render(dt: number, alpha: number)
 		local hz = p.PHZ + (p.HZ - p.PHZ) * alpha
 		if hx * hx + hz * hz < 1e-4 then
 			hx, hz = p.HX, p.HZ
+		end
+		local back = p.Return
+		if back then
+			-- kazadan kalkış: durduğu yerden kaldırımdaki yürüme çizgisine yumuşakça
+			back.T += dt
+			local e = math.clamp(back.T / back.D, 0, 1)
+			e = e * e * (3 - 2 * e)
+			x += back.Offset.X * (1 - e)
+			y += back.Offset.Y * (1 - e)
+			z += back.Offset.Z * (1 - e)
+			if e >= 1 then
+				p.Return = nil
+			end
 		end
 		PedRenderer.Place(model, Vector3.new(x, y, z), hx, hz)
 		PedRenderer.SetFade(model, p.Fade or 0)
@@ -29112,6 +29335,10 @@ local function onHeartbeat(dt: number)
 		end
 	end
 	render(dt, accumulator / SIM_DT)
+	local ok, err = pcall(updateWrecks, dt)
+	if not ok then
+		Log.Error("Kaza güncellemesi hata verdi:", err)
+	end
 end
 
 function AmbientController:Init(allControllers)
@@ -34685,6 +34912,23 @@ function PedMeshRig.Build(rng: Random): (Model?, any)
 		end
 		drive[n] = { Bone = b, M1 = m1, M2 = adjusted(b) }
 	end
+	-- tüm kemikler ebeveyn önce sırada (ragdoll'da ileri kinematik için) ve parçaların köke göre yeri
+	local order = {}
+	local function visit(inst: Instance)
+		for _, c in inst:GetChildren() do
+			if c:IsA("Bone") then
+				table.insert(order, c)
+				visit(c)
+			end
+		end
+	end
+	for _, p in parts do
+		visit(p)
+	end
+	local partOffset = {}
+	for _, p in parts do
+		partOffset[p] = root.CFrame:ToObjectSpace(p.CFrame)
+	end
 	local rig = {
 		Mesh = true,
 		Id = info.Id,
@@ -34693,6 +34937,12 @@ function PedMeshRig.Build(rng: Random): (Model?, any)
 		Parts = parts,
 		Drive = drive,
 		Fade = 0,
+		Root = root,
+		Bones = bones,
+		Order = order,
+		PartOffset = partOffset,
+		Rag = nil, -- ragdoll durumu
+		GetUp = nil, -- kalkma durumu
 	}
 	PedMeshRig.Neutral(rig)
 	return model, rig
@@ -34741,6 +34991,261 @@ function PedMeshRig.SetFade(rig, fade: number)
 	for _, p in rig.Parts do
 		p.LocalTransparencyModifier = fade
 	end
+end
+
+-- ===================== RAGDOLL =====================
+-- Araç çarpınca: her uzva görünmez bir fizik parçası (kutu) konur, uzuvlar eklemlerle (BallSocket, açı sınırlı)
+-- bağlanır, parçalar araçtan aldığı hızla savrulur. Kemikler her karede kendi parçasını izler (Bone.Transform);
+-- arada kalan kemikler (omurga, köprücük, el, ayak) ebeveynlerini izler. Model (deri mesh) kalça parçasına kaynaklıdır
+-- (görünür sınırları ragdoll'la birlikte gider). Durulunca ayağa kalkma: ragdoll pozundan ayakta duruş pozuna
+-- yumuşak geçiş (GETUP_TIME), sonra yürüme yeniden başlar (AmbientController).
+local SEGMENTS = { -- uzuv parçaları: kemik → uç noktası (bir sonraki kemik ya da uzatma), en/derinlik (stud, ölçek 1)
+	{ Name = "Hips", Bone = "Pelvis", To = "Spine1", W = 1.15, D = 0.75 },
+	{ Name = "Chest", Bone = "Spine2", To = "Neck", W = 1.3, D = 0.8 },
+	{ Name = "Head", Bone = "Head", From = "Neck", Extend = 0.95, W = 0.7, D = 0.8 },
+	{ Name = "LUpperArm", Bone = "LUpperArm", To = "LForearm", W = 0.38, D = 0.38 },
+	{ Name = "LForearm", Bone = "LForearm", To = "LHand", Extra = 0.45, W = 0.32, D = 0.32 },
+	{ Name = "RUpperArm", Bone = "RUpperArm", To = "RForearm", W = 0.38, D = 0.38 },
+	{ Name = "RForearm", Bone = "RForearm", To = "RHand", Extra = 0.45, W = 0.32, D = 0.32 },
+	{ Name = "LThigh", Bone = "LThigh", To = "LCalf", W = 0.55, D = 0.55 },
+	{ Name = "LCalf", Bone = "LCalf", To = "LFoot", Extra = 0.2, W = 0.42, D = 0.42 },
+	{ Name = "RThigh", Bone = "RThigh", To = "RCalf", W = 0.55, D = 0.55 },
+	{ Name = "RCalf", Bone = "RCalf", To = "RFoot", Extra = 0.2, W = 0.42, D = 0.42 },
+}
+local JOINTS = { -- { üst parça, alt parça, eklem kemiği, koni açısı, burulma } (derece)
+	{ "Hips", "Chest", "Spine2", 35, 20 },
+	{ "Chest", "Head", "Head", 45, 40 },
+	{ "Chest", "LUpperArm", "LUpperArm", 110, 60 },
+	{ "LUpperArm", "LForearm", "LForearm", 85, 15 },
+	{ "Chest", "RUpperArm", "RUpperArm", 110, 60 },
+	{ "RUpperArm", "RForearm", "RForearm", 85, 15 },
+	{ "Hips", "LThigh", "LThigh", 80, 25 },
+	{ "LThigh", "LCalf", "LCalf", 80, 10 },
+	{ "Hips", "RThigh", "RThigh", 80, 25 },
+	{ "RThigh", "RCalf", "RCalf", 80, 10 },
+}
+local GETUP_TIME = 0.9
+
+-- Kemiklerin şu anki dünya konumları (ileri kinematik: ebeveyn × dinlenme × Transform)
+local function poseWorld(rig): { [Instance]: CFrame }
+	local world = {}
+	for _, b in rig.Order do
+		local parent = b.Parent
+		local pw = if parent and parent:IsA("Bone") then world[parent] else (parent :: BasePart).CFrame
+		world[b] = pw * b.CFrame * b.Transform
+	end
+	return world
+end
+
+function PedMeshRig.IsDown(rig): boolean
+	return rig.Rag ~= nil
+end
+
+-- Yere düşür. velocity: çarpan aracın verdiği hız (stud/sn), spin: gövde dönüşü (rad/sn)
+function PedMeshRig.Ragdoll(rig, model: Model, velocity: Vector3, spin: Vector3?)
+	if rig.Rag or rig.GetUp then
+		return
+	end
+	local world = poseWorld(rig)
+	local B = rig.Bones
+	local k = rig.Scale
+	local parts, drive, all = {}, {}, {}
+	for _, seg in SEGMENTS do
+		local wa = world[B[seg.Bone]]
+		local a = wa.Position
+		local b
+		if seg.To then
+			b = world[B[seg.To]].Position
+			if seg.Extra then
+				b += (b - a).Unit * seg.Extra * k
+			end
+		else
+			b = a + (a - world[B[seg.From]].Position).Unit * seg.Extend * k
+		end
+		local dir = b - a
+		local len = math.max(dir.Magnitude, 0.3)
+		local up = if math.abs(dir.Unit:Dot(wa.UpVector)) < 0.9 then wa.UpVector else wa.RightVector
+		local cf = CFrame.lookAt((a + b) / 2, b, up)
+		local part = Instance.new("Part")
+		part.Name = "Ragdoll_" .. seg.Name
+		part.Size = Vector3.new(seg.W * k, seg.D * k, len)
+		part.CFrame = cf
+		part.Transparency = 1
+		part.CanCollide = true
+		part.CanQuery = false
+		part.CanTouch = false
+		part.CastShadow = false
+		part.CustomPhysicalProperties = PhysicalProperties.new(1.1, 0.9, 0.05, 1, 1)
+		part.Parent = model
+		parts[seg.Name] = part
+		table.insert(all, part)
+		drive[B[seg.Bone]] = { Part = part, Offset = cf:ToObjectSpace(wa) }
+	end
+	for _, j in JOINTS do
+		local pa, pb = parts[j[1]], parts[j[2]]
+		local at = world[B[j[3]]].Position
+		local frame = CFrame.fromMatrix(at, pb.CFrame.LookVector, pb.CFrame.UpVector) -- birincil eksen: alt uzvun yönü
+		local a0 = Instance.new("Attachment")
+		a0.CFrame = pa.CFrame:ToObjectSpace(frame)
+		a0.Parent = pa
+		local a1 = Instance.new("Attachment")
+		a1.CFrame = pb.CFrame:ToObjectSpace(frame)
+		a1.Parent = pb
+		local c = Instance.new("BallSocketConstraint")
+		c.Attachment0 = a0
+		c.Attachment1 = a1
+		c.LimitsEnabled = true
+		c.UpperAngle = j[4]
+		c.TwistLimitsEnabled = true
+		c.TwistLowerAngle = -j[5]
+		c.TwistUpperAngle = j[5]
+		c.Parent = pa
+	end
+	for i = 1, #all do -- uzuvlar birbirine çarpmaz (titreme yok), sadece dünyaya
+		for n = i + 1, #all do
+			local nc = Instance.new("NoCollisionConstraint")
+			nc.Part0 = all[i]
+			nc.Part1 = all[n]
+			nc.Parent = all[i]
+		end
+	end
+	-- görünür model kalça parçasıyla gider (kökten ayrılır)
+	local rootWelds = {}
+	for _, p in rig.Parts do
+		for _, w in p:GetChildren() do
+			if w:IsA("WeldConstraint") and w.Enabled then
+				w.Enabled = false
+				table.insert(rootWelds, w)
+			end
+		end
+		p.Anchored = false
+		local weld = Instance.new("WeldConstraint")
+		weld.Part0 = parts.Hips
+		weld.Part1 = p
+		weld.Parent = parts.Hips
+	end
+	for _, part in all do
+		part.AssemblyLinearVelocity = velocity
+	end
+	parts.Hips.AssemblyAngularVelocity = spin or Vector3.zero
+	rig.Rag = { Parts = parts, All = all, Drive = drive, RootWelds = rootWelds, Time = 0, Still = 0 }
+end
+
+-- Her kare: kemikler fizik parçalarını izler. Döndürür: durdu mu (yerde, hareketsiz) ve kalça konumu
+function PedMeshRig.StepRagdoll(rig, dt: number): (boolean, Vector3)
+	local rag = rig.Rag
+	if not rag then
+		return false, rig.Root.Position
+	end
+	local world = {}
+	for _, b in rig.Order do
+		local parent = b.Parent
+		local pw = if parent and parent:IsA("Bone") then world[parent] else (parent :: BasePart).CFrame
+		local base = pw * b.CFrame
+		local d = rag.Drive[b]
+		if d then
+			local want = d.Part.CFrame * d.Offset
+			b.Transform = base:Inverse() * want
+			world[b] = want
+		else
+			world[b] = base * b.Transform
+		end
+	end
+	rag.Time += dt
+	local hips = rag.Parts.Hips
+	if hips.AssemblyLinearVelocity.Magnitude < 1.2 then
+		rag.Still += dt
+	else
+		rag.Still = 0
+	end
+	local settled = rag.Time > 6 or (rag.Time > 1.6 and rag.Still > 0.5)
+	return settled, hips.Position
+end
+
+local function clearRagdoll(rig)
+	local rag = rig.Rag
+	if not rag then
+		return
+	end
+	for _, part in rag.All do
+		part:Destroy() -- eklemler, çarpışmama kuralları ve modele kaynak da birlikte gider
+	end
+	rig.Rag = nil
+	return rag
+end
+
+-- Ayağa kalk: kök standing (kalça noktası, yüz yönü) konumuna konur; model ragdoll pozundan ayakta duruşa geçer
+function PedMeshRig.StartGetUp(rig, standing: CFrame)
+	local rag = clearRagdoll(rig)
+	if not rag then
+		return
+	end
+	local fromT, toT, meshFrom, meshTo = {}, {}, {}, {}
+	for _, b in rig.Order do
+		fromT[b] = b.Transform
+		toT[b] = CFrame.identity
+	end
+	for _, d in rig.Drive do
+		toT[d.Bone] = d.M1 * d.M2 -- duruş pozu (kollar yanda)
+	end
+	rig.Root.Anchored = true
+	rig.Root.CFrame = standing
+	for _, p in rig.Parts do
+		p.Anchored = true
+		meshFrom[p] = p.CFrame
+		meshTo[p] = standing * rig.PartOffset[p]
+	end
+	rig.GetUp = { Time = 0, FromT = fromT, ToT = toT, MeshFrom = meshFrom, MeshTo = meshTo, RootWelds = rag.RootWelds }
+end
+
+-- Her kare; bitince true (model yeniden köke kaynaklı, yürümeye hazır)
+function PedMeshRig.StepGetUp(rig, dt: number): boolean
+	local g = rig.GetUp
+	if not g then
+		return true
+	end
+	g.Time += dt
+	local t = math.clamp(g.Time / GETUP_TIME, 0, 1)
+	local e = t * t * (3 - 2 * t)
+	for p, from in g.MeshFrom do
+		p.CFrame = from:Lerp(g.MeshTo[p], e)
+	end
+	for b, from in g.FromT do
+		b.Transform = from:Lerp(g.ToT[b], e)
+	end
+	if t < 1 then
+		return false
+	end
+	for _, p in rig.Parts do
+		p.Anchored = false
+	end
+	for _, w in g.RootWelds do
+		w.Enabled = true
+	end
+	rig.GetUp = nil
+	return true
+end
+
+-- Havuza dönerken: ragdoll / kalkma yarıda kaldıysa temizle, model köke kaynaklı duruş pozunda
+function PedMeshRig.Reset(rig)
+	local rag = clearRagdoll(rig)
+	local welds = (rag and rag.RootWelds) or (rig.GetUp and rig.GetUp.RootWelds)
+	rig.GetUp = nil
+	if welds then
+		rig.Root.Anchored = true
+		for _, p in rig.Parts do
+			p.Anchored = true
+			p.CFrame = rig.Root.CFrame * rig.PartOffset[p]
+			p.Anchored = false
+		end
+		for _, w in welds do
+			w.Enabled = true
+		end
+	end
+	for _, b in rig.Order do
+		b.Transform = CFrame.identity
+	end
+	PedMeshRig.Neutral(rig)
 end
 
 return PedMeshRig
@@ -35046,6 +35551,12 @@ function PedRenderer.Acquire(): Model
 end
 
 function PedRenderer.Release(model: Model)
+	local rig = rigOf[model]
+	if rig and rig.Mesh then
+		PedMeshRig.Reset(rig)
+	elseif rig and (rig :: any).Rag then
+		PedRenderer.StartGetUp(model, Vector3.new(0, -500, 0), 0, -1) -- R15: eklemleri geri bağla
+	end
 	local root = model.PrimaryPart
 	if root then
 		root.Anchored = true
@@ -35144,17 +35655,136 @@ function PedRenderer.SetFade(model: Model, fade: number)
 	rig.Face.Transparency = fade
 end
 
--- Araç çarptı: model düşer (bu istemcide fizik), sonra havuza döner
-function PedRenderer.MakePhysical(model: Model, velocity: Vector3)
-	local root = model.PrimaryPart
-	if not root then
+-- ===================== Kaza: ragdoll, kalkma =====================
+-- Gerçekçi (Rocketbox) yayada PedMeshRig'in uzuv fiziği; R15 yayada eklemler (Motor6D) koni sınırlı bilyeli
+-- eklemlere çevrilir. Akış (AmbientController): Knockdown → her kare StepDown (durunca true) → StartGetUp →
+-- her kare StepGetUp (bitince true) → yaya simülasyona geri döner.
+function PedRenderer.Knockdown(model: Model, velocity: Vector3)
+	local rig = rigOf[model] :: any
+	if not rig then
+		return
+	end
+	local spin = Vector3.new(math.random() * 6 - 3, math.random() * 2 - 1, math.random() * 6 - 3)
+	if rig.Mesh then
+		PedMeshRig.Ragdoll(rig, model, velocity, spin)
+		return
+	end
+	if rig.Rag then
 		return
 	end
 	PedRenderer.Neutral(model)
-	root.CanCollide = true -- yere düşsün (zeminin içinden geçmesin)
+	local made = {}
+	for name, m in rig.Motors do
+		if name ~= "Root" and m.Part0 and m.Part1 then
+			local a0 = Instance.new("Attachment")
+			a0.CFrame = m.C0
+			a0.Parent = m.Part0
+			local a1 = Instance.new("Attachment")
+			a1.CFrame = m.C1
+			a1.Parent = m.Part1
+			local c = Instance.new("BallSocketConstraint")
+			c.Attachment0 = a0
+			c.Attachment1 = a1
+			c.LimitsEnabled = true
+			c.UpperAngle = if string.find(name, "Shoulder") then 110 else 70
+			c.TwistLimitsEnabled = true
+			c.TwistLowerAngle = -25
+			c.TwistUpperAngle = 25
+			c.Parent = m.Part0
+			table.insert(made, a0)
+			table.insert(made, a1)
+			table.insert(made, c)
+			m.Enabled = false
+		end
+	end
+	for name, part in rig.Parts do
+		if name ~= "HumanoidRootPart" then
+			part.CanCollide = true
+			part.Massless = false
+		end
+	end
+	local root = model.PrimaryPart :: BasePart
+	root.CanCollide = false
 	root.Anchored = false
-	root.AssemblyLinearVelocity = velocity
-	root.AssemblyAngularVelocity = Vector3.new(math.random() * 4 - 2, 0, math.random() * 4 - 2)
+	for _, part in rig.Parts do
+		part.AssemblyLinearVelocity = velocity
+	end
+	root.AssemblyAngularVelocity = spin
+	rig.Rag = { Made = made, Time = 0, Still = 0 }
+end
+
+-- Her kare. Döndürür: durdu mu, gövdenin (kalça) konumu
+function PedRenderer.StepDown(model: Model, dt: number): (boolean, Vector3)
+	local rig = rigOf[model] :: any
+	local root = model.PrimaryPart
+	if not rig or not root then
+		return true, Vector3.zero
+	end
+	if rig.Mesh then
+		return PedMeshRig.StepRagdoll(rig, dt)
+	end
+	local rag = rig.Rag
+	if not rag then
+		return true, root.Position
+	end
+	local torso = rig.Parts.LowerTorso or root
+	rag.Time += dt
+	if torso.AssemblyLinearVelocity.Magnitude < 1.2 then
+		rag.Still += dt
+	else
+		rag.Still = 0
+	end
+	return rag.Time > 6 or (rag.Time > 1.6 and rag.Still > 0.5), torso.Position
+end
+
+-- Ayağa kalkmaya başla: ground = ayakların basacağı yer noktası, (hx, hz) = yüz yönü
+function PedRenderer.StartGetUp(model: Model, ground: Vector3, hx: number, hz: number)
+	local rig = rigOf[model] :: any
+	local root = model.PrimaryPart
+	if not rig or not root then
+		return
+	end
+	local look = Vector3.new(hx, 0, hz)
+	if look.Magnitude < 0.01 then
+		look = Vector3.new(0, 0, -1)
+	end
+	if rig.Mesh then
+		local pos = ground + Vector3.new(0, rig.RootY, 0)
+		PedMeshRig.StartGetUp(rig, CFrame.lookAt(pos, pos + look))
+		return
+	end
+	-- R15: eklemleri geri bağla, kökü ayakta konumuna koy (anında)
+	local rag = rig.Rag
+	if rag then
+		for _, inst in rag.Made do
+			inst:Destroy()
+		end
+		rig.Rag = nil
+	end
+	for _, m in rig.Motors do
+		m.Enabled = true
+	end
+	for name, part in rig.Parts do
+		if name ~= "HumanoidRootPart" then
+			part.CanCollide = false
+			part.Massless = true
+		end
+	end
+	root.Anchored = true
+	root.AssemblyLinearVelocity = Vector3.zero
+	root.AssemblyAngularVelocity = Vector3.zero
+	local pos = ground + Vector3.new(0, ROOT_Y * rig.Scale, 0)
+	root.CFrame = CFrame.lookAt(pos, pos + look)
+	PedRenderer.Neutral(model)
+end
+
+-- Her kare; bitince true
+function PedRenderer.StepGetUp(model: Model, dt: number): boolean
+	local rig = rigOf[model] :: any
+	if rig and rig.Mesh then
+		return PedMeshRig.StepGetUp(rig, dt)
+	end
+	return true
 end
 
 function PedRenderer.PoolCount(): number
@@ -35795,6 +36425,29 @@ function TrafficRenderer.MakePhysical(model: Model, velocity: Vector3)
 	end
 	root.Anchored = false
 	root.AssemblyLinearVelocity = velocity
+end
+
+-- Kazadaki aracın durumu: hız (stud/sn), dik mi (devrilmemiş), konum, burun yönü (yatay)
+function TrafficRenderer.CrashState(model: Model): (number, boolean, Vector3, Vector3)
+	local root = model.PrimaryPart
+	if not root then
+		return 0, false, Vector3.zero, Vector3.new(0, 0, -1)
+	end
+	local look = root.CFrame.LookVector
+	local flat = Vector3.new(look.X, 0, look.Z)
+	flat = if flat.Magnitude > 1e-3 then flat.Unit else Vector3.new(0, 0, -1)
+	return root.AssemblyLinearVelocity.Magnitude, root.CFrame.UpVector.Y > 0.85, root.Position, flat
+end
+
+-- Kazadan toparlan: model yeniden sabit (simülasyon taşır)
+function TrafficRenderer.Recover(model: Model)
+	local root = model.PrimaryPart
+	if not root then
+		return
+	end
+	root.AssemblyLinearVelocity = Vector3.zero
+	root.AssemblyAngularVelocity = Vector3.zero
+	root.Anchored = true
 end
 
 function TrafficRenderer.PoolCount(): number

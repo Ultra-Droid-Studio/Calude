@@ -290,6 +290,51 @@ function PedSim:_trySpawn(ctx)
 	return true
 end
 
+-- Kazadan sonra ayağa kalkan yayayı yeniden yürüt (aynı görünüm: seed, hız). (x, z) noktasına en yakın kaldırım
+-- bağlantısına (karşıya geçiş değil, ≤ maxDist) konur, (hx, hz) yönüne en yakın uçtan devam eder. Bulunamazsa nil.
+-- Spawned listesine girmez: görseli çağıran verir (aynı model).
+function PedSim:Rejoin(x, z, hx, hz, seed, speed, maxDist)
+	maxDist = maxDist or 18
+	local best, bestT, bestD = nil, 0, maxDist * maxDist
+	for _, link in ipairs(self.PG.LinksNear(self.Graph, x, z, maxDist)) do
+		if not link.Crossing and not link.Door and link.Length > 0.5 then
+			local ax, az = link.A.X, link.A.Z
+			local dx, dz = link.B.X - ax, link.B.Z - az
+			local t = clamp(((x - ax) * dx + (z - az) * dz) / (dx * dx + dz * dz), 0, 1)
+			local qx, qz = ax + dx * t, az + dz * t
+			local d2 = (qx - x) ^ 2 + (qz - z) ^ 2
+			if d2 < bestD then
+				best, bestT, bestD = link, t, d2
+			end
+		end
+	end
+	if not best then
+		return nil
+	end
+	local dx, dz = best.B.X - best.A.X, best.B.Z - best.A.Z
+	local forward = dx * (hx or 0) + dz * (hz or 0) >= 0
+	local from, to = best.A, best.B
+	if not forward then
+		from, to = best.B, best.A
+	end
+	local cfg = self.Cfg
+	local p = {
+		Id = self.NextId, Node = from, X = x, Y = self.Graph.Top, Z = z, HX = hx or 0, HZ = hz or 1,
+		Speed = speed or (cfg.WalkSpeed[1] + self.Rng() * (cfg.WalkSpeed[2] - cfg.WalkSpeed[1])),
+		Lateral = (self.Rng() * 2 - 1) * cfg.SidewalkSpread * 0.7, LatCur = 0, State = "Yürü", Timer = 0, Moving = 0,
+		Seed = seed or self.Rng(), CurSpeed = 0,
+	}
+	self.NextId = self.NextId + 1
+	self:_startLink(p, best, to)
+	p.T = best.Length * (forward and bestT or (1 - bestT))
+	p.X = best.A.X + dx * bestT
+	p.Z = best.A.Z + dz * bestT
+	p.HX, p.HZ = p.DX, p.DZ
+	self.Peds[#self.Peds + 1] = p
+	self.Stats.Rejoins = (self.Stats.Rejoins or 0) + 1
+	return p
+end
+
 function PedSim:Remove(p, reason)
 	if p.Removed then
 		return

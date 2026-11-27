@@ -294,6 +294,12 @@ function PedRenderer.Acquire(): Model
 end
 
 function PedRenderer.Release(model: Model)
+	local rig = rigOf[model]
+	if rig and rig.Mesh then
+		PedMeshRig.Reset(rig)
+	elseif rig and (rig :: any).Rag then
+		PedRenderer.StartGetUp(model, Vector3.new(0, -500, 0), 0, -1) -- R15: eklemleri geri bağla
+	end
 	local root = model.PrimaryPart
 	if root then
 		root.Anchored = true
@@ -392,17 +398,136 @@ function PedRenderer.SetFade(model: Model, fade: number)
 	rig.Face.Transparency = fade
 end
 
--- Araç çarptı: model düşer (bu istemcide fizik), sonra havuza döner
-function PedRenderer.MakePhysical(model: Model, velocity: Vector3)
-	local root = model.PrimaryPart
-	if not root then
+-- ===================== Kaza: ragdoll, kalkma =====================
+-- Gerçekçi (Rocketbox) yayada PedMeshRig'in uzuv fiziği; R15 yayada eklemler (Motor6D) koni sınırlı bilyeli
+-- eklemlere çevrilir. Akış (AmbientController): Knockdown → her kare StepDown (durunca true) → StartGetUp →
+-- her kare StepGetUp (bitince true) → yaya simülasyona geri döner.
+function PedRenderer.Knockdown(model: Model, velocity: Vector3)
+	local rig = rigOf[model] :: any
+	if not rig then
+		return
+	end
+	local spin = Vector3.new(math.random() * 6 - 3, math.random() * 2 - 1, math.random() * 6 - 3)
+	if rig.Mesh then
+		PedMeshRig.Ragdoll(rig, model, velocity, spin)
+		return
+	end
+	if rig.Rag then
 		return
 	end
 	PedRenderer.Neutral(model)
-	root.CanCollide = true -- yere düşsün (zeminin içinden geçmesin)
+	local made = {}
+	for name, m in rig.Motors do
+		if name ~= "Root" and m.Part0 and m.Part1 then
+			local a0 = Instance.new("Attachment")
+			a0.CFrame = m.C0
+			a0.Parent = m.Part0
+			local a1 = Instance.new("Attachment")
+			a1.CFrame = m.C1
+			a1.Parent = m.Part1
+			local c = Instance.new("BallSocketConstraint")
+			c.Attachment0 = a0
+			c.Attachment1 = a1
+			c.LimitsEnabled = true
+			c.UpperAngle = if string.find(name, "Shoulder") then 110 else 70
+			c.TwistLimitsEnabled = true
+			c.TwistLowerAngle = -25
+			c.TwistUpperAngle = 25
+			c.Parent = m.Part0
+			table.insert(made, a0)
+			table.insert(made, a1)
+			table.insert(made, c)
+			m.Enabled = false
+		end
+	end
+	for name, part in rig.Parts do
+		if name ~= "HumanoidRootPart" then
+			part.CanCollide = true
+			part.Massless = false
+		end
+	end
+	local root = model.PrimaryPart :: BasePart
+	root.CanCollide = false
 	root.Anchored = false
-	root.AssemblyLinearVelocity = velocity
-	root.AssemblyAngularVelocity = Vector3.new(math.random() * 4 - 2, 0, math.random() * 4 - 2)
+	for _, part in rig.Parts do
+		part.AssemblyLinearVelocity = velocity
+	end
+	root.AssemblyAngularVelocity = spin
+	rig.Rag = { Made = made, Time = 0, Still = 0 }
+end
+
+-- Her kare. Döndürür: durdu mu, gövdenin (kalça) konumu
+function PedRenderer.StepDown(model: Model, dt: number): (boolean, Vector3)
+	local rig = rigOf[model] :: any
+	local root = model.PrimaryPart
+	if not rig or not root then
+		return true, Vector3.zero
+	end
+	if rig.Mesh then
+		return PedMeshRig.StepRagdoll(rig, dt)
+	end
+	local rag = rig.Rag
+	if not rag then
+		return true, root.Position
+	end
+	local torso = rig.Parts.LowerTorso or root
+	rag.Time += dt
+	if torso.AssemblyLinearVelocity.Magnitude < 1.2 then
+		rag.Still += dt
+	else
+		rag.Still = 0
+	end
+	return rag.Time > 6 or (rag.Time > 1.6 and rag.Still > 0.5), torso.Position
+end
+
+-- Ayağa kalkmaya başla: ground = ayakların basacağı yer noktası, (hx, hz) = yüz yönü
+function PedRenderer.StartGetUp(model: Model, ground: Vector3, hx: number, hz: number)
+	local rig = rigOf[model] :: any
+	local root = model.PrimaryPart
+	if not rig or not root then
+		return
+	end
+	local look = Vector3.new(hx, 0, hz)
+	if look.Magnitude < 0.01 then
+		look = Vector3.new(0, 0, -1)
+	end
+	if rig.Mesh then
+		local pos = ground + Vector3.new(0, rig.RootY, 0)
+		PedMeshRig.StartGetUp(rig, CFrame.lookAt(pos, pos + look))
+		return
+	end
+	-- R15: eklemleri geri bağla, kökü ayakta konumuna koy (anında)
+	local rag = rig.Rag
+	if rag then
+		for _, inst in rag.Made do
+			inst:Destroy()
+		end
+		rig.Rag = nil
+	end
+	for _, m in rig.Motors do
+		m.Enabled = true
+	end
+	for name, part in rig.Parts do
+		if name ~= "HumanoidRootPart" then
+			part.CanCollide = false
+			part.Massless = true
+		end
+	end
+	root.Anchored = true
+	root.AssemblyLinearVelocity = Vector3.zero
+	root.AssemblyAngularVelocity = Vector3.zero
+	local pos = ground + Vector3.new(0, ROOT_Y * rig.Scale, 0)
+	root.CFrame = CFrame.lookAt(pos, pos + look)
+	PedRenderer.Neutral(model)
+end
+
+-- Her kare; bitince true
+function PedRenderer.StepGetUp(model: Model, dt: number): boolean
+	local rig = rigOf[model] :: any
+	if rig and rig.Mesh then
+		return PedMeshRig.StepGetUp(rig, dt)
+	end
+	return true
 end
 
 function PedRenderer.PoolCount(): number

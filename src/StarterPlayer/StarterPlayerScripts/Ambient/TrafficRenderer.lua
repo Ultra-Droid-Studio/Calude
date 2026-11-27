@@ -263,6 +263,29 @@ function TrafficRenderer.MakePhysical(model: Model, velocity: Vector3)
 	root.AssemblyLinearVelocity = velocity
 end
 
+-- Kazadaki aracın durumu: hız (stud/sn), dik mi (devrilmemiş), konum, burun yönü (yatay)
+function TrafficRenderer.CrashState(model: Model): (number, boolean, Vector3, Vector3)
+	local root = model.PrimaryPart
+	if not root then
+		return 0, false, Vector3.zero, Vector3.new(0, 0, -1)
+	end
+	local look = root.CFrame.LookVector
+	local flat = Vector3.new(look.X, 0, look.Z)
+	flat = if flat.Magnitude > 1e-3 then flat.Unit else Vector3.new(0, 0, -1)
+	return root.AssemblyLinearVelocity.Magnitude, root.CFrame.UpVector.Y > 0.85, root.Position, flat
+end
+
+-- Kazadan toparlan: model yeniden sabit (simülasyon taşır)
+function TrafficRenderer.Recover(model: Model)
+	local root = model.PrimaryPart
+	if not root then
+		return
+	end
+	root.AssemblyLinearVelocity = Vector3.zero
+	root.AssemblyAngularVelocity = Vector3.zero
+	root.Anchored = true
+end
+
 function TrafficRenderer.PoolCount(): number
 	local n = 0
 	for _, pool in pools do

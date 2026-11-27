@@ -58,7 +58,9 @@ local graph, pedGraph, traffic, peds
 local ready = false
 local vehicleModels: { [any]: Model } = {}
 local pedModels: { [any]: Model } = {}
-local wrecks: { { Model: Model, Ped: boolean, Until: number } } = {}
+-- Kaza modelleri: yaya (ragdoll → kalkma → yürümeye devam) ya da araç (fizik → toparlanma → trafiğe dönüş).
+-- Geri dönemeyenler (devrilmiş araç, yol bulamayan yaya) eskisi gibi oyuncu uzaklaşınca havuza döner.
+local wrecks: { any } = {}
 local SIM_DT = 1 / AmbientConfig.SimRate
 local accumulator = 0
 local active = false
@@ -265,6 +267,20 @@ local function gatherObstacles(focus: Vector3)
 			end
 		end
 	end
+	-- kaza modelleri: yoldaki kaza aracı ve yerde yatan yaya trafiği durdurur / şerit değiştirtir
+	for _, w in wrecks do
+		local c = w.Model.PrimaryPart
+		if c then
+			local p = if w.Ped then w.Pos or c.Position else c.Position
+			if (p - focus).Magnitude < 400 then
+				table.insert(forTraffic, {
+					X = p.X, Y = p.Y, Z = p.Z, R = if w.Ped then R.Pedestrian else R.Vehicle,
+					Kind = if w.Ped then "Pedestrian" else "Vehicle",
+				})
+				table.insert(forPeds, { X = p.X, Z = p.Z, R = if w.Ped then 1.5 else 3, Kind = if w.Ped then "Player" else "Vehicle", Speed = 0 })
+			end
+		end
+	end
 	for _, p in peds.Peds do
 		if p.State == "Geç" or (p.Link and p.Link.Crossing) then
 			local spd = p.CurSpeed or 0
@@ -318,13 +334,22 @@ local function clearAll()
 	for _, p in table.clone(peds.Peds) do
 		peds:Remove(p, "Kapat")
 	end
+	for _, w in wrecks do
+		if w.Ped then
+			PedRenderer.Release(w.Model)
+		else
+			TrafficRenderer.Release(w.Model)
+		end
+	end
+	wrecks = {}
 	syncModels()
 	traffic.Despawned, peds.Despawned = {}, {}
 	SignalRenderer.Update(graph, nil, 0, 0)
 	DoorRenderer.Update(nil, 0)
 end
 
--- ===== Kaza: oyuncunun aracı NPC araca/yayaya çarparsa NPC fiziğe geçer (bu istemcide), sonra havuza döner =====
+-- ===== Kaza: oyuncunun aracı NPC araca/yayaya çarparsa NPC fiziğe geçer (bu istemcide); yaya ragdoll olur,
+-- durulunca kalkıp yürümeye, araç toparlanıp trafiğe döner (updateWrecks) =====
 local function handleCollisions()
 	local current = controllers.VehicleController:GetCurrent()
 	if not current or not current.IsDriver or not current.Chassis then
@@ -351,7 +376,10 @@ local function handleCollisions()
 				traffic.Despawned = {}
 				if model then
 					TrafficRenderer.MakePhysical(model, npcVel)
-					table.insert(wrecks, { Model = model, Ped = false, Until = os.clock() + 10 })
+					table.insert(wrecks, {
+						Model = model, Ped = false, Until = os.clock() + 10, Kind = v.Kind, Phase = "Crash", Time = 0,
+						Still = 0, Retry = 0,
+					})
 				end
 			end
 		end
@@ -365,8 +393,86 @@ local function handleCollisions()
 				peds:Remove(ped, "Kaza")
 				peds.Despawned = {}
 				if model then
-					PedRenderer.MakePhysical(model, vel * 0.6 + Vector3.new(0, 18, 0))
-					table.insert(wrecks, { Model = model, Ped = true, Until = os.clock() + 8 })
+					PedRenderer.Knockdown(model, vel * 0.65 + Vector3.new(0, 14, 0))
+					table.insert(wrecks, {
+						Model = model, Ped = true, Until = os.clock() + 8, Phase = "Down", Seed = ped.Seed,
+						Speed = ped.Speed, Anim = ped.Anim, HX = ped.HX or 0, HZ = ped.HZ or 1,
+					})
+				end
+			end
+		end
+	end
+end
+
+-- Yer noktası (kaza modelinin altı; NPC'ler ve kaza modelleri hariç)
+local groundParams = RaycastParams.new()
+groundParams.FilterType = Enum.RaycastFilterType.Exclude
+groundParams.IgnoreWater = false
+local function groundUnder(position: Vector3, ignore: Instance): Vector3?
+	groundParams.FilterDescendantsInstances = { ignore, PedRenderer.Folder(), TrafficRenderer.Folder() }
+	local hit = Workspace:Raycast(position + Vector3.new(0, 3, 0), Vector3.new(0, -14, 0), groundParams)
+	return if hit then hit.Position else nil
+end
+
+-- Her kare: kaza modellerini ilerlet
+local function updateWrecks(dt: number)
+	local current = controllers.VehicleController:GetCurrent()
+	local playerCar = current and current.Chassis
+	for i = #wrecks, 1, -1 do
+		local w = wrecks[i]
+		if w.Ped then
+			if w.Phase == "Down" then
+				local settled, hips = PedRenderer.StepDown(w.Model, dt)
+				w.Pos = hips
+				if settled then
+					local ground = groundUnder(hips, w.Model)
+					if ground then
+						w.Ground = ground
+						w.Phase = "GetUp"
+						PedRenderer.StartGetUp(w.Model, ground, w.HX, w.HZ)
+					else
+						w.Phase = "Lying" -- suya/boşluğa düştü: uzaklaşınca kaldırılır
+					end
+				end
+			elseif w.Phase == "GetUp" then
+				if PedRenderer.StepGetUp(w.Model, dt) then
+					local g = w.Ground
+					local p = peds:Rejoin(g.X, g.Z, w.HX, w.HZ, w.Seed, w.Speed, 18)
+					if p then
+						pedModels[p] = w.Model
+						p.Anim = w.Anim or PedAnim.new(w.Seed or math.random())
+						p.PX, p.PY, p.PZ, p.PHX, p.PHZ = p.X, p.Y, p.Z, p.HX, p.HZ
+						-- duruş yerinden kaldırımdaki yürüme çizgisine yumuşak geçiş
+						p.Return = { Offset = g - Vector3.new(p.X, p.Y, p.Z), T = 0, D = 0.9 }
+						table.remove(wrecks, i)
+					else
+						w.Phase = "Standing" -- yakında kaldırım yok: ayakta durur, uzaklaşınca kaldırılır
+						PedRenderer.Neutral(w.Model)
+					end
+				end
+			end
+		elseif w.Phase == "Crash" then
+			w.Time += dt
+			local speed, upright, pos, look = TrafficRenderer.CrashState(w.Model)
+			if speed < 1.5 then
+				w.Still += dt
+			else
+				w.Still = 0
+			end
+			local playerNear = playerCar and (playerCar.Position - pos).Magnitude < 14
+			if w.Time > 1.5 and w.Still > 0.8 and not playerNear then
+				if not upright then
+					w.Phase = "Wreck" -- devrildi: kalır, uzaklaşınca kaldırılır
+				elseif os.clock() >= w.Retry then
+					w.Retry = os.clock() + 1 -- şerit doluysa saniyede bir yeniden dene
+					local v = traffic:Rejoin(w.Kind, pos.X, pos.Z, look.X, look.Z, 14)
+					if v then
+						TrafficRenderer.Recover(w.Model)
+						vehicleModels[v] = w.Model
+						v.PX, v.PY, v.PZ, v.PHX, v.PHZ = v.X, v.Y, v.Z, v.HX, v.HZ
+						v.Return = { Offset = pos - Vector3.new(v.X, v.Y, v.Z), HX = look.X, HZ = look.Z, T = 0, D = 1.2 }
+						table.remove(wrecks, i)
+					end
 				end
 			end
 		end
@@ -522,6 +628,21 @@ local function render(dt: number, alpha: number)
 			if hx * hx + hz * hz < 1e-4 then
 				hx, hz = v.HX, v.HZ
 			end
+			local back = v.Return
+			if back then
+				-- kazadan dönüş: modelin durduğu yerden şeritteki yerine yumuşakça
+				back.T += dt
+				local e = math.clamp(back.T / back.D, 0, 1)
+				e = e * e * (3 - 2 * e)
+				x += back.Offset.X * (1 - e)
+				y += back.Offset.Y * (1 - e)
+				z += back.Offset.Z * (1 - e)
+				hx = back.HX + (hx - back.HX) * e
+				hz = back.HZ + (hz - back.HZ) * e
+				if e >= 1 then
+					v.Return = nil
+				end
+			end
 			local pos = Vector3.new(x, y, z)
 			root.CFrame = CFrame.lookAt(pos, pos + Vector3.new(hx, v.Slope or 0, hz))
 			TrafficRenderer.SetBrake(model, v.Brake)
@@ -547,6 +668,19 @@ local function render(dt: number, alpha: number)
 		local hz = p.PHZ + (p.HZ - p.PHZ) * alpha
 		if hx * hx + hz * hz < 1e-4 then
 			hx, hz = p.HX, p.HZ
+		end
+		local back = p.Return
+		if back then
+			-- kazadan kalkış: durduğu yerden kaldırımdaki yürüme çizgisine yumuşakça
+			back.T += dt
+			local e = math.clamp(back.T / back.D, 0, 1)
+			e = e * e * (3 - 2 * e)
+			x += back.Offset.X * (1 - e)
+			y += back.Offset.Y * (1 - e)
+			z += back.Offset.Z * (1 - e)
+			if e >= 1 then
+				p.Return = nil
+			end
 		end
 		PedRenderer.Place(model, Vector3.new(x, y, z), hx, hz)
 		PedRenderer.SetFade(model, p.Fade or 0)
@@ -608,6 +742,10 @@ local function onHeartbeat(dt: number)
 		end
 	end
 	render(dt, accumulator / SIM_DT)
+	local ok, err = pcall(updateWrecks, dt)
+	if not ok then
+		Log.Error("Kaza güncellemesi hata verdi:", err)
+	end
 end
 
 function AmbientController:Init(allControllers)
