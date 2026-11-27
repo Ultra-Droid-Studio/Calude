@@ -5,6 +5,9 @@ Model: "Various Low-Poly Street Lights" — KMB3D (Sketchfab), **CC BY 4.0** (at
 Derleme: `place/SOLARA_StreetLights.rbxlx` (önceki her şey + bu değişiklik).
 
 ## Kurulum — Studio GEREKMEZ (Open Cloud)
+**Kısa yol:** `bash solara_streetlights.sh` — anahtarı (gizli) ve sahip numarasını sorar, modeli yükler, numarayı
+yazar, yeri derler, istersen yayınlar. Aşağıdaki adımları elle yapmak istersen:
+
 Oyun `.rbxlx` olarak Open Cloud ile yayınlandığı için 3D model de Open Cloud ile yüklenir; sunucu açılışta modeli
 numarasıyla kendisi indirir (`InsertService:LoadAsset`).
 1. Open Cloud API anahtarına **Assets API** izni (asset:read + asset:write) ver
