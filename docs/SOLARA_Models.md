@@ -1,7 +1,8 @@
 # SOLARA — Kullanıcının modelleri: arabalar, trafik ışıkları, sokak lambaları, yayalar
 
 Durum: **kod, modeller ve yükleme betiği hazır; çevrimdışı testler PASS. Modeller kullanıcı tarafından Roblox'a
-yüklendi (27.11.2026; numaralar `WorldGen/AssetIds.lua`'da). Oyunda (Studio'da ya da yayında) henüz doğrulanmadı.**
+yüklendi (27.11.2026; numaralar `WorldGen/AssetIds.lua`'da). Kullanıcı yayında doğruladı: arabalar, trafik ışıkları,
+sokak lambaları (gece yanıyor) ve yayalar (yüz, saç, kıyafet) oyunda görünüyor.**
 Derleme: `place/SOLARA_Models.rbxlx` (önceki her şey + bu değişiklikler + 4 model numarası).
 
 ## Ne geldi
@@ -95,3 +96,10 @@ renkler ve polis; kavşakta ışıkların sırayla yanması; yayaların yürüme
 * Arabaların lisansı: cosmo-art sayfası buradan açılamadı. Paketi nasıl edindiğini ve lisans satırını kontrol et
   (satın alma / ücretsiz, ticari kullanım, atıf şartı).
 * Oyunun Roblox açıklamasına `docs/CREDITS.md`'deki atıf satırlarını ekle.
+
+## Sonraki istekler (kullanıcı, 27.11.2026 — henüz başlanmadı)
+* Araba modellerini daha da güzelleştirmek; arabaya iç (sürücü) kamerası.
+* Çarpılabilir trafik ışıkları (ve benzeri sokak eşyaları): araç çarpınca yerinden sökülüp düşsün, bir süre sonra
+  kaybolsun; oyuncu uzaklaşıp geri gelince yerinde yeniden olsun.
+* Çarpışma düzeltmesi: şu an yayalara ve trafikteki NPC arabalara çarpınca olduğu yerde kalıp sonra yok oluyorlar —
+  düzgün tepki vermeleri.
