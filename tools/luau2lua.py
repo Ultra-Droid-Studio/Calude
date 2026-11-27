@@ -86,8 +86,8 @@ def _if_expressions(t):
                 depth -= 1
             elif c == "," and depth == 0:
                 break
-            elif c == "\n":
-                break
+            elif c == "\n" or t.startswith("--", j):
+                break  # end of line or a trailing comment ends the expression
             j += 1
         expr = t[start:j].strip()
         parts = re.split(r"\b(then|elseif|else)\b", expr[3:])
