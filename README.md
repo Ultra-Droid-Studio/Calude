@@ -15,7 +15,7 @@
 | `place/SOLARA_Fix5_MinimapFrame.rbxlx` | + bug-fix roadmap step 5 (minimap content spilling outside its frame). |
 | `place/SOLARA_Phase6_TrafficAI.rbxlx` | + Phase 6 (traffic and pedestrian AI, sidewalk parser fix). |
 | `place/SOLARA_Cars.rbxlx` | + 3D car models (Quaternius CC0) wired in; they appear once the `.glb` files are imported in Studio (docs/SOLARA_CarPack.md). |
-| `place/SOLARA_StreetLights.rbxlx` | **Current build:** + 3D street lights (KMB3D, CC BY 4.0) by district once `assets/streetlights/StreetLights.glb` is imported into `ServerStorage.StreetLightModels`; old lamps otherwise (docs/SOLARA_StreetLights.md). Open this in Roblox Studio. |
+| `place/SOLARA_StreetLights.rbxlx` | **Current build:** + 3D street lights (KMB3D, CC BY 4.0) by district once `assets/streetlights/StreetLights.glb` is uploaded with Open Cloud (`tools/roblox_upload_asset.py`, id in `WorldGen/AssetIds.lua`); old lamps otherwise (docs/SOLARA_StreetLights.md). Open this in Roblox Studio. |
 | `place/SOLARA_City3.rbxlx` | Previous build: city expansion stage 3: brand shop signs (box / letters / blade / striped awning), 46 Centro ground-floor shops, art deco / brick / townhouse details, rooftop units, 11 billboards, night lights for signs and shop windows; offline tests PASS, not yet tested in Studio (docs/SOLARA_City3_Facades.md). |
 | `place/SOLARA_City2.rbxlx` | Previous build: city expansion stage 2, business registry (docs/SOLARA_City2_Businesses.md). |
 | `place/SOLARA_MapStability.rbxlx` | Previous build: + minimap / full map / GPS stability fix (docs/SOLARA_MapStability.md). |

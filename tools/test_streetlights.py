@@ -86,16 +86,21 @@ function Folder(name, parts)
   return f
 end
 STORE = {}
+AID = { StreetLights = 0 }
+LOADABLE = nil -- what InsertService:LoadAsset returns (Open Cloud uploaded model)
+LOADED_ID = nil
 game = { GetService = function(_, n)
   if n == "ServerStorage" then return { FindFirstChild = function(_, nm) return STORE[nm] end } end
+  if n == "InsertService" then return { LoadAsset = function(_, id) LOADED_ID = id; return LOADABLE end } end
   return { Shared = { MapDefinitions = "__MD", Config = "__CFG" }, FindFirstChild = function() return nil end }
 end }
-script = { Parent = { StreetLightData = "__SLD" } }
+script = { Parent = { StreetLightData = "__SLD", AssetIds = "__AID" } }
 local realRequire = require
 require = function(x)
   if x == "__MD" then return __MD end
   if x == "__CFG" then return { World = { LampLightEvery = 3 } } end
   if x == "__SLD" then return __SLD end
+  if x == "__AID" then return AID end
   return realRequire(x)
 end
 KIT = { Count = 0, Tags = {} }
@@ -124,7 +129,7 @@ def lamps():
     return out
 
 
-def build_case(scale, origin):
+def build_case(scale, origin, via_asset=False):
     lua = LuaRuntime(unpack_returned_tuples=True)
     lua.execute(MOCK)
     lua.execute("""
@@ -152,7 +157,12 @@ CAPTURE = {}
                 size = [(mx[i] - mn[i]) * scale for i in (1, 2, 3)]
                 centre = [((mx[i] + mn[i]) / 2 + (d.Offset if i == 1 else 0)) * scale + origin[i - 1] for i in (1, 2, 3)]
                 parts.append(mk(f"StreetLight_{key}_{role}", *size, *centre))
-        lua.globals().STORE["StreetLightModels"] = lua.eval("Folder")("StreetLightModels", lua.table_from(parts))
+        folder = lua.eval("Folder")("Model", lua.table_from(parts))
+        if via_asset:
+            lua.globals().AID.StreetLights = 123456789
+            lua.globals().LOADABLE = folder
+        else:
+            lua.globals().STORE["StreetLightModels"] = folder
     fn = lua.eval("""function(sl, x, y, z, yaw, idx)
       CAPTURE = {}
       local cf = CFrame.new(x, y, z) * CFrame.Angles(0, math.rad(yaw), 0)
@@ -220,6 +230,15 @@ for ok, parts, style in base:
 print("INFO lamps per type:", dict(sorted(counts.items(), key=lambda kv: -kv[1])))
 tris = sum(sld[s].Triangles * n for s, n in counts.items())
 print(f"INFO triangles: {tris} for all {len(base)} lamps (streaming loads only the nearby ones)")
+
+lua, sl, sld, fn = build_case(3.57, (10, 0, 10), via_asset=True)
+ok, parts, style = fn(sl, LAMPS[0][0], LAMPS[0][3], LAMPS[0][1], LAMPS[0][2], 1)
+ref = base[0][1]
+got = [dict(r) for r in parts.values()]
+same_asset = bool(ok) and len(got) == len(ref) and all(
+    abs(a["LY"] - b["LY"]) < 1e-6 and abs(a["LZ"] - b["LZ"]) < 1e-6 for a, b in zip(got, ref))
+check("[6] Open Cloud path: model loaded by AssetIds.StreetLights (InsertService) gives the same lamp",
+      same_asset and lua.globals().LOADED_ID == 123456789)
 
 lua, sl, sld, fn = build_case(None, None)
 ok, _, _ = fn(sl, 0, 0.8, 0, 0, 1)

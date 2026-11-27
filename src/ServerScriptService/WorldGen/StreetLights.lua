@@ -1,8 +1,10 @@
 -- StreetLights: sokak lambalarını 3D modelle kurar (dış model: "Various Low-Poly Street Lights" — KMB3D, CC-BY-4.0).
 --
--- Akış: tools/streetlights_convert.py → assets/streetlights/StreetLights.glb → Studio "Import 3D" → içe aktarılan
--- modeli ServerStorage'a taşı ve adını "StreetLightModels" yap (ReplicatedStorage'da da aranır). Model yoksa
--- PropBuilder eski prosedürel lambayı kurar (oyun her durumda çalışır).
+-- Akış (Studio gerekmez): tools/streetlights_convert.py → assets/streetlights/StreetLights.glb → Open Cloud ile Model
+-- olarak yükle (tools/roblox_upload_asset.py; numara AssetIds.StreetLights'a yazılır) → sunucu açılışta
+-- InsertService:LoadAsset ile yükleyip ServerStorage."StreetLightModels" yapar. (Studio'da elle içe aktarılıp
+-- ServerStorage/ReplicatedStorage'a "StreetLightModels" adıyla konursa o kullanılır.) Model yoksa PropBuilder eski
+-- prosedürel lambayı kurar (oyun her durumda çalışır).
 --
 -- Her lamba tipi iki MeshPart: StreetLight_<Tip>_Pole (direk) ve StreetLight_<Tip>_Lamp (lamba camı). Parçalar adla
 -- bulunur (içe aktarmanın klasör yapısı önemli değil). Konum/ölçek StreetLightData'daki ölçülerden: direğin taban
@@ -11,10 +13,12 @@
 
 local ServerStorage = game:GetService("ServerStorage")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local InsertService = game:GetService("InsertService")
 
 local MapDefinitions = require(ReplicatedStorage.Shared.MapDefinitions)
 local Config = require(ReplicatedStorage.Shared.Config)
 local StreetLightData = require(script.Parent.StreetLightData)
+local AssetIds = require(script.Parent.AssetIds)
 
 local StreetLights = {}
 
@@ -50,6 +54,19 @@ local function loadTemplates()
 	end
 	searched = true
 	local folder = ServerStorage:FindFirstChild(FOLDER_NAME) or ReplicatedStorage:FindFirstChild(FOLDER_NAME)
+	if not folder and (AssetIds.StreetLights or 0) > 0 then
+		-- Open Cloud ile yüklenmiş model: sunucuda bir kez indir
+		local ok, result = pcall(function()
+			return InsertService:LoadAsset(AssetIds.StreetLights)
+		end)
+		if ok and result then
+			result.Name = FOLDER_NAME
+			result.Parent = ServerStorage
+			folder = result
+		else
+			warn("[StreetLights] model yüklenemedi (asset " .. tostring(AssetIds.StreetLights) .. "): " .. tostring(result))
+		end
+	end
 	if not folder then
 		return nil
 	end
