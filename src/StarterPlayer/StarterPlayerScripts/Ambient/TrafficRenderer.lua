@@ -106,7 +106,7 @@ local function build(defId: string): Model
 	return model
 end
 
--- Dış 3D model (CarModelConfig; ör. Quaternius CC0 paketi): ReplicatedStorage.VehicleModels'ta varsa kullanılır.
+-- Dış 3D model (CarModelConfig; kullanıcının verdiği low-poly arabalar): ReplicatedStorage.VehicleModels'ta varsa kullanılır.
 -- Ölçek: tanımın dingil mesafesi; kök yol yüzeyinde, teker merkezleri yerden teker yarıçapı kadar yukarıda.
 local meshData: { [Model]: { Name: string, Parts: { BasePart }, Spin: { any }, Radius: number, Angle: number } } = {}
 
@@ -161,12 +161,13 @@ end
 
 local function paint(model: Model)
 	local def = VehicleDefinitions.Get(model:GetAttribute("DefId"))
-	local color = def.Colors[rng:NextInteger(1, #def.Colors)]
 	local mesh = meshData[model]
 	if mesh then
-		CarModelKit.Repaint(mesh.Parts, mesh.Name, color)
+		-- bazen modelin kendi rengi (CarModelConfig.OriginalPaintChance), çoğunlukla aracın renk listesinden
+		CarModelKit.Repaint(mesh.Parts, mesh.Name, CarModelKit.RandomPaint(def.Colors, rng))
 		return
 	end
+	local color = def.Colors[rng:NextInteger(1, #def.Colors)]
 	for _, name in { "Body", "Roof" } do
 		local p = model:FindFirstChild(name) :: BasePart?
 		if p then

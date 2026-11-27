@@ -420,7 +420,7 @@ end
 -- kaynakları aynen kalır, görünmez olur. Model fizikteki dingil mesafesine ölçeklenir; görünür tekerlekler modelin kendi
 -- oranındadır ve yere değecek kadar alçakta durur (fizik tekerleği modelinkinden büyük). Teker görselleri mafsala
 -- Motor6D ile bağlıdır: direksiyon ve süspansiyonla hareket eder, dönüşü istemci oynatır (VehicleVisualsController).
-local function dressWithModel(ctx: Ctx, name: string): boolean
+local function dressWithModel(ctx: Ctx, name: string, colorGiven: boolean): boolean
 	local info = CarModelKit.Get(name)
 	if not info then
 		return false
@@ -450,7 +450,9 @@ local function dressWithModel(ctx: Ctx, name: string): boolean
 	local visualRadius = info.WheelRadius * s
 	local drop = math.max(d.WheelRadius - visualRadius, 0)
 	local frame = chassis.CFrame * CFrame.new(0, ctx.yW - drop, 0)
-	CarModelKit.Build(info, { Frame = frame, Scale = s, Parent = model, Body = chassis, Wheels = knuckles, Paint = ctx.Color })
+	-- renk verilmediyse bazen modelin kendi rengi (CarModelConfig.OriginalPaintChance)
+	local paint = if colorGiven then ctx.Color else CarModelKit.RandomPaint({ ctx.Color }, ctx.Rng)
+	CarModelKit.Build(info, { Frame = frame, Scale = s, Parent = model, Body = chassis, Wheels = knuckles, Paint = paint })
 	-- Koltuk: oturan karakterin başı (~3.4 stud) tavanın altında kalsın
 	local roof = ctx.yW - drop + info.RoofY * s
 	ctx.SeatDrop = math.max((ctx.yTop - 1.0) - (roof - 3.4), 0)
@@ -551,7 +553,7 @@ function VehicleFactory.Build(defId: string, cframe: CFrame, options: { Color: C
 		styleFn(ctx)
 		local bodyModel = CarModelKit.Pick(defId, rng, false)
 		if bodyModel then
-			dressWithModel(ctx, bodyModel)
+			dressWithModel(ctx, bodyModel, opts.Color ~= nil)
 		end
 		wheels = { "FL", "FR", "RL", "RR" }
 		-- direksiyon simidi + IK el hedefleri

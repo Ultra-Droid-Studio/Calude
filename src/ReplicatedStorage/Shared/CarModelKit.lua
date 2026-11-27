@@ -1,8 +1,11 @@
--- CarModelKit: içe aktarılan 3D otomobil modellerini (CarModelConfig) araçlara giydirir.
+-- CarModelKit: 3D otomobil modellerini (CarModelConfig) araçlara giydirir.
 -- Sunucu (oyuncu araçları, VehicleFactory) ve istemci (NPC trafiği, TrafficRenderer) aynı modülü kullanır.
 --
--- Kalibrasyon (model başına bir kez): Studio'nun içe aktarıcısı yönü/birimi nasıl yorumlarsa yorumlasın, modelin
--- KENDİ tekerlekleri ölçülür:
+-- Parça adları (tools/cosmo_cars_convert.py): <Ad>_<Rol>_<rrggbb>, tekerlek parçaları <Ad>_Wheel_<FL|FR|RL|RR>_<Tür>_<rrggbb>.
+-- Renk adın içindedir: içe aktarıcının malzemeleri nasıl yorumladığına bakılmaz.
+--
+-- Kalibrasyon (model başına bir kez): içe aktarıcı yönü/birimi nasıl yorumlarsa yorumlasın, modelin KENDİ
+-- tekerlekleri ölçülür:
 --   ön = ön teker ortası − arka teker ortası,  sağ = sağ tekerler − sol tekerler,  yukarı = sağ × ön,
 --   orijin = dört teker merkezinin ortası (teker merkezi yüksekliğinde).
 -- Her parça bu çerçeveye göre saklanır; giydirirken hedef çerçeveye ölçekle yerleştirilir.
@@ -16,6 +19,7 @@ local Config = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("C
 local CarModelKit = {}
 
 local WHEELS = { "FL", "FR", "RL", "RR" }
+local GREY = Color3.fromRGB(110, 110, 110)
 local cache: { [string]: any } = {}
 local warned: { [string]: boolean } = {}
 
@@ -26,26 +30,33 @@ local function warnOnce(key: string, ...)
 	end
 end
 
--- Parça adı → rol ve (tekerlekse) hangi teker. İçe aktarıcının eklediği önek/sonekleri tolere eder.
--- Orijinal görünümlü modellerde (Config.Original) rolü olmayan her parça "Keep" olur: dokusu, rengi, malzemesi
--- olduğu gibi kalır.
-local function roleOf(name: string, modelName: string): (string?, string?)
+-- Parça adı → rol, (tekerlekse) hangi teker, adın içindeki renk. İçe aktarıcının eklediği önek/sonekleri tolere eder.
+local function parseName(name: string, modelName: string): (string?, string?, Color3?)
 	local n = name
 	if string.sub(n, 1, #modelName + 1) == modelName .. "_" then
 		n = string.sub(n, #modelName + 2)
 	end
+	local hex = string.match(n, "_(%x%x%x%x%x%x)")
+	local color = if hex then Color3.fromHex(hex) else nil
 	local wheel, kind = string.match(n, "^Wheel_(%u%u)_(%a+)")
 	if wheel then
-		return kind, wheel
+		return kind, wheel, color
 	end
-	local role = string.match(n, "^(%a+%d?)")
+	local role = string.match(n, "^(%a+)")
 	if role and Config.Roles[role] then
-		return role, nil
+		return role, nil, color
 	end
-	if Config.Original and Config.Original[modelName] then
-		return "Keep", nil
+	return nil, nil, nil
+end
+
+-- Modeller hazır mı? Sunucunun yükleyicisi (ModelAssetService) klasörü kurarken Ready = false, bitince true yapar;
+-- Studio'da elle konmuş klasörde bu öznitelik yoktur (hazır sayılır).
+local function modelFolder(): Instance?
+	local folder = ReplicatedStorage:FindFirstChild(Config.Folder)
+	if folder and folder:GetAttribute("Ready") == false then
+		return nil
 	end
-	return nil, nil
+	return folder
 end
 
 -- Model hazır mı? (ReplicatedStorage.<Folder>.<name> var ve kalibre edilebiliyor)
@@ -54,7 +65,7 @@ function CarModelKit.Get(name: string)
 	if cached ~= nil then
 		return cached or nil
 	end
-	local folder = ReplicatedStorage:FindFirstChild(Config.Folder)
+	local folder = modelFolder()
 	local model = folder and folder:FindFirstChild(name)
 	if not model then
 		return nil
@@ -62,11 +73,17 @@ function CarModelKit.Get(name: string)
 	local entries = {}
 	local wheelParts = { FL = {}, FR = {}, RL = {}, RR = {} }
 	local tires = {}
+	local paintColor, paint2Color = nil, nil
 	for _, d in model:GetDescendants() do
 		if d:IsA("BasePart") then
-			local role, wheel = roleOf(d.Name, name)
+			local role, wheel, color = parseName(d.Name, name)
 			if role then
-				table.insert(entries, { Template = d, Role = role, Wheel = wheel })
+				table.insert(entries, { Template = d, Role = role, Wheel = wheel, Color = color })
+				if role == "Paint" and color and not paintColor then
+					paintColor = color
+				elseif role == "Paint2" and color and not paint2Color then
+					paint2Color = color
+				end
 				if wheel then
 					table.insert(wheelParts[wheel], d)
 					if role == "Tire" then
@@ -85,11 +102,20 @@ function CarModelKit.Get(name: string)
 	end
 	local centers = {}
 	for _, w in WHEELS do
-		local sum = Vector3.zero
+		-- teker merkezi: tekerin parçalarının ortak sınır kutusunun ortası
+		local lo, hi = Vector3.one * math.huge, -Vector3.one * math.huge
 		for _, p in wheelParts[w] do
-			sum += p.Position
+			local h = p.Size / 2
+			for _, sx in { -1, 1 } do
+				for _, sy in { -1, 1 } do
+					for _, sz in { -1, 1 } do
+						local c = p.CFrame * Vector3.new(sx * h.X, sy * h.Y, sz * h.Z)
+						lo, hi = lo:Min(c), hi:Max(c)
+					end
+				end
+			end
 		end
-		centers[w] = sum / #wheelParts[w]
+		centers[w] = (lo + hi) / 2
 	end
 	local front = ((centers.FL + centers.FR) - (centers.RL + centers.RR)) / 2
 	local right = ((centers.FR - centers.FL) + (centers.RR - centers.RL)) / 2
@@ -103,8 +129,21 @@ function CarModelKit.Get(name: string)
 	local up = r:Cross(f).Unit
 	local origin = (centers.FL + centers.FR + centers.RL + centers.RR) / 4
 	local frame = CFrame.fromMatrix(origin, r, up) -- LookVector = ön
+	-- teker yarıçapı: ön sol lastiğin dikey yüksekliğinin yarısı (lastiğin en alt noktası yere değsin)
 	local tire = tires.FL or wheelParts.FL[1]
-	local radius = math.max(tire.Size.X, tire.Size.Y, tire.Size.Z) / 2
+	local tireLo, tireHi = math.huge, -math.huge
+	do
+		local h = tire.Size / 2
+		for _, sx in { -1, 1 } do
+			for _, sy in { -1, 1 } do
+				for _, sz in { -1, 1 } do
+					local y = frame:PointToObjectSpace(tire.CFrame * Vector3.new(sx * h.X, sy * h.Y, sz * h.Z)).Y
+					tireLo, tireHi = math.min(tireLo, y), math.max(tireHi, y)
+				end
+			end
+		end
+	end
+	local radius = (tireHi - tireLo) / 2
 	local roof, minZ, maxZ, maxX = -math.huge, math.huge, -math.huge, 0
 	for _, e in entries do
 		e.Offset = frame:ToObjectSpace(e.Template.CFrame)
@@ -134,23 +173,27 @@ function CarModelKit.Get(name: string)
 		RoofY = roof, -- teker merkezinden tavana
 		Length = maxZ - minZ,
 		Width = maxX * 2,
+		PaintColor = paintColor or Color3.new(0.8, 0.8, 0.8), -- modelin kendi boyası
+		Paint2Color = paint2Color,
 	}
 	cache[name] = info
 	return info
 end
 
--- defId için kullanılacak model (yoksa nil). traffic = true → NPC'ye özel varyantlar (taksi) da olabilir.
--- variantScale: varyant olasılığı çarpanı (Yaşayan Şehir: merkezde/havalimanında daha çok taksi); yoksa 1.
+-- defId için kullanılacak model (yoksa nil). traffic = true → NPC'ye özel varyantlar (polis) da olabilir.
+-- variantScale: varyant olasılığı çarpanı (Yaşayan Şehir: merkezde/havalimanında daha sık); yoksa 1.
 function CarModelKit.Pick(defId: string, rng: Random, traffic: boolean?, variantScale: number?): string?
 	if traffic then
-		for _, v in Config.TrafficVariants[defId] or {} do
+		local variants = Config.TrafficVariants[defId] or {}
+		for _, v in variants do
 			if rng:NextNumber() < v.Chance * (variantScale or 1) and CarModelKit.Get(v.Model) then
 				return v.Model
 			end
 		end
 	end
 	local available = {}
-	for _, name in Config.ByDefinition[defId] or {} do
+	local names = Config.ByDefinition[defId] or {}
+	for _, name in names do
 		if CarModelKit.Get(name) then
 			table.insert(available, name)
 		end
@@ -161,19 +204,29 @@ function CarModelKit.Pick(defId: string, rng: Random, traffic: boolean?, variant
 	return available[rng:NextInteger(1, #available)]
 end
 
+-- Rastgele boya: OriginalPaintChance olasılıkla nil (= modelin kendi rengi), yoksa renk listesinden biri
+function CarModelKit.RandomPaint(colors: { Color3 }, rng: Random): Color3?
+	if #colors == 0 or rng:NextNumber() < (Config.OriginalPaintChance or 0) then
+		return nil
+	end
+	return colors[rng:NextInteger(1, #colors)]
+end
+
+-- Gövde renkleri. paint = nil → modelin kendi boyası
 function CarModelKit.PaintColors(name: string, paint: Color3?): (Color3, Color3)
-	local colors = Config.Colors[name] or {}
-	local base = if Config.FixedPaint[name] or not paint then (colors.Paint or Color3.new(0.8, 0.8, 0.8)) else paint
+	local info = cache[name]
+	local own = if info then info.PaintColor else Color3.new(0.8, 0.8, 0.8)
+	local base = if Config.FixedPaint[name] or not paint then own else paint
 	local second
 	if Config.Paint2Rule[name] == "Darker" then
-		second = base:Lerp(Color3.new(0, 0, 0), 0.12)
+		second = if base == own and info and info.Paint2Color then info.Paint2Color else base:Lerp(Color3.new(0, 0, 0), 0.15)
 	else
-		second = colors.Paint2 or base
+		second = (info and info.Paint2Color) or base
 	end
 	return base, second
 end
 
--- Boyayı değiştir (havuzdan yeniden kullanılan NPC araçları için)
+-- Boyayı değiştir (havuzdan yeniden kullanılan NPC araçları için). paint = nil → modelin kendi rengi
 function CarModelKit.Repaint(parts: { BasePart }, name: string, paint: Color3?)
 	local base, second = CarModelKit.PaintColors(name, paint)
 	for _, p in parts do
@@ -192,45 +245,36 @@ end
 --   Parent: Instance
 --   Body: BasePart      gövde parçalarının kaynaklanacağı parça (şasi / NPC kökü)
 --   Wheels: { [string]: BasePart }?   teker görsellerinin bağlanacağı parçalar (FL/FR/RL/RR); yoksa Body
---   Paint: Color3?      gövde rengi (sabit boyalı modellerde yok sayılır)
+--   Paint: Color3?      gövde rengi (nil → modelin kendi rengi; sabit boyalı modellerde yok sayılır)
 --   Shadows: boolean?
--- Döndürür: { Parts = { BasePart }, Spin = { { Motor: Motor6D, Wheel: string } }, Lights = { Headlight = {}, TailLight = {} } }
+-- Döndürür: { Parts = { BasePart }, Spin = { { Motor: Motor6D, Wheel: string } }, Lights = { [rol]: { BasePart } } }
 function CarModelKit.Build(info, opts)
-	local colors = Config.Colors[info.Name] or {}
 	local base, second = CarModelKit.PaintColors(info.Name, opts.Paint)
 	local s = opts.Scale
-	local result = { Parts = {}, Spin = {}, Lights = { Headlight = {}, TailLight = {} } }
-	local original = Config.Original and Config.Original[info.Name]
+	local result = { Parts = {}, Spin = {}, Lights = {} }
 	for _, e in info.Entries do
 		local p = e.Template:Clone()
 		for _, child in p:GetChildren() do
-			-- içe aktarıcının eklediği kaynak nesneleri bizden; orijinal modelde doku (SurfaceAppearance) kalır
-			if not (original and child:IsA("SurfaceAppearance")) then
-				child:Destroy()
-			end
+			child:Destroy() -- içe aktarıcının eklediği nesneler (doku, kaynak) bizden; renk adın içinde
 		end
+		local style = Config.Roles[e.Role] or {}
 		p.Size = e.Template.Size * s
 		p.Anchored = false
 		p.Massless = true
 		p.CanCollide = false
 		p.CanQuery = false
 		p.CanTouch = false
-		if original and e.Role ~= "Paint" and e.Role ~= "Paint2" then
-			-- orijinal görünüm: içe aktarılan renk, malzeme, saydamlık, doku (TextureID / SurfaceAppearance) aynen
-			p.CastShadow = opts.Shadows ~= false and not e.Wheel
-		else
-			local style = Config.Roles[e.Role] or {}
-			p.Material = style.Material or Enum.Material.SmoothPlastic
-			p.Transparency = style.Transparency or 0
-			p.Reflectance = style.Reflectance or 0
-			p.CastShadow = opts.Shadows ~= false and (e.Role == "Paint" or e.Role == "Paint2" or e.Role == "Dark" or e.Role == "Tire")
-			p.Color = if e.Role == "Paint" then base elseif e.Role == "Paint2" then second else (colors[e.Role] or Color3.fromRGB(110, 110, 110))
-		end
+		p.Material = style.Material or Enum.Material.SmoothPlastic
+		p.Transparency = style.Transparency or 0
+		p.Reflectance = style.Reflectance or 0
+		p.CastShadow = opts.Shadows ~= false and style.Shadow == true
+		p.Color = if e.Role == "Paint" then base elseif e.Role == "Paint2" then second else (e.Color or GREY)
 		p:SetAttribute("CarRole", e.Role)
 		p:SetAttribute("OffColor", p.Color)
-		if e.Role == "Headlight" or e.Role == "TailLight" then
-			p.Name = e.Role -- araç ışık sistemi (VehicleService) bu adlarla bulur
-			table.insert(result.Lights[e.Role], p)
+		if style.Light then
+			p.Name = style.Light -- araç ışık sistemi (VehicleService / TrafficRenderer) bu adlarla bulur
+			result.Lights[style.Light] = result.Lights[style.Light] or {}
+			table.insert(result.Lights[style.Light], p)
 		elseif e.Wheel then
 			p.Name = "CarWheel_" .. e.Wheel .. "_" .. e.Role
 		else
