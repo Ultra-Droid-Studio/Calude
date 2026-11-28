@@ -312,6 +312,10 @@ function PedRenderer.Release(model: Model)
 	end
 	if root then
 		root.CanCollide = false
+		local talk = root:FindFirstChild("TalkPrompt") :: ProximityPrompt?
+		if talk then
+			talk.Enabled = false
+		end
 	end
 	PedRenderer.SetFade(model, 0)
 	model.Parent = nil
@@ -321,6 +325,43 @@ end
 function PedRenderer.Scale(model: Model): number
 	local rig = rigOf[model]
 	return rig and rig.Scale or 1
+end
+
+-- Cinsiyet (sohbet kişiliği için): gerçekçi yayada "F"/"M", kodla kurulan yayada "N" (belirsiz)
+function PedRenderer.Gender(model: Model): string
+	local rig = rigOf[model] :: any
+	if rig and rig.Mesh and type(rig.Id) == "string" then
+		local g = string.sub(rig.Id, 1, 1)
+		if g == "F" or g == "M" then
+			return g
+		end
+	end
+	return "N"
+end
+
+-- "Konuş" istemi (yayanın kökünde; ilk istekte kurulur, AmbientController açıp kapatır)
+function PedRenderer.TalkPrompt(model: Model, chatConfig: any): ProximityPrompt?
+	local root = model.PrimaryPart
+	if not root then
+		return nil
+	end
+	local prompt = root:FindFirstChild("TalkPrompt") :: ProximityPrompt?
+	if not prompt and chatConfig then
+		local p = Instance.new("ProximityPrompt")
+		p.Name = "TalkPrompt"
+		p.ActionText = "Konuş"
+		p.ObjectText = ""
+		p.KeyboardKeyCode = chatConfig.PromptKey
+		p.GamepadKeyCode = chatConfig.PromptGamepad
+		p.HoldDuration = 0
+		p.MaxActivationDistance = chatConfig.PromptDistance
+		p.RequiresLineOfSight = false
+		p.UIOffset = Vector2.new(0, 0)
+		p.Enabled = false
+		p.Parent = root
+		prompt = p
+	end
+	return prompt
 end
 
 -- Konum: zemin noktası (ayak tabanı) ve yön (hx, hz)

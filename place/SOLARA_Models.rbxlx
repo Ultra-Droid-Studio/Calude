@@ -376,6 +376,79 @@ return UIConfig
 ]]></ProtectedString>
 </Properties>
 </Item>
+<Item class="ModuleScript" referent="RBXC62D033CN"><Properties>
+<string name="Name">NPCChatConfig</string>
+
+<ProtectedString name="Source"><![CDATA[-- NPCChatConfig: yayalarla yapay zekâlı sohbet (Roblox TextGenerator; NPCChatService / Ambient/NPCChat).
+-- Kişilik sunucuda yayanın tohumundan (seed) üretilir; istemci sadece tohum, cinsiyet ve konum gönderir.
+
+return {
+	Enabled = true,
+
+	-- Etkileşim
+	PromptKey = Enum.KeyCode.E,
+	PromptGamepad = Enum.KeyCode.ButtonX,
+	PromptDistance = 7, -- stud: "Konuş" istemi
+	EndDistance = 16, -- stud: oyuncu bu kadar uzaklaşınca sohbet biter, yaya yürümeye devam eder
+	IdleTimeout = 60, -- sn: mesaj yazılmazsa sohbet biter
+	MaxMessageLength = 140, -- karakter (oyuncunun mesajı)
+	BubbleSeconds = 9, -- cevap balonu görünür kalma süresi
+
+	-- Sunucu sınırları (oyuncu başına): 3 hak, 4 sn'de bir dolar → dakikada ~15 mesaj
+	RateCapacity = 3,
+	RateRefillPerSecond = 0.25,
+	GeneratorIdleSeconds = 300, -- kullanılmayan sohbet üretici (TextGenerator) bu süre sonra silinir
+	MaxGenerators = 6, -- oyuncu başına aynı anda tutulan sohbet (yaya) sayısı
+
+	-- Model ayarları (TextGenerator: Temperature 0.4–1.0, TopP 0.5–1.0)
+	MaxTokens = 90,
+	Temperature = 0.85,
+	TopP = 0.9,
+	MaxReplyLength = 260, -- karakter (uzun cevaplar kırpılır)
+
+	-- Kişilik malzemesi
+	FemaleNames = {
+		"Elif", "Zeynep", "Defne", "Ayşe", "Selin", "Ece", "Melis", "Derya", "Sofía", "Valeria", "Lucía", "Camila",
+		"İrem", "Naz", "Ceren", "Isabel", "Gül", "Pınar", "Marta", "Elena",
+	},
+	MaleNames = {
+		"Mert", "Emre", "Can", "Burak", "Kerem", "Ahmet", "Ozan", "Deniz", "Carlos", "Diego", "Mateo", "Javier",
+		"Tolga", "Barış", "Kaan", "Luis", "Andrés", "Murat", "Serkan", "Pablo",
+	},
+	Surnames = {
+		"Yılmaz", "Kaya", "Demir", "Aydın", "Öztürk", "Arslan", "García", "Morales", "Navarro", "Ruiz", "Ortega", "Vega",
+		"Şahin", "Koç", "Çelik", "Reyes", "Castro", "Doğan", "Polat", "Herrera",
+	},
+	Jobs = {
+		"avukat", "muhasebeci", "emlakçı", "banka çalışanı", "mimar", "yazılımcı", "gazeteci", "doktor", "satış müdürü",
+		"restoran işletmecisi", "otel müdürü", "reklamcı", "sigortacı", "fotoğrafçı", "öğretmen", "turizm rehberi",
+		"tasarımcı", "müzik yapımcısı", "eczacı", "girişimci",
+	},
+	Traits = {
+		"neşeli", "alaycı ama iyi niyetli", "biraz telaşlı", "sakin", "meraklı", "konuşkan", "kısa ve net konuşan",
+		"esprili", "biraz kaygılı", "kendinden emin", "nazik", "romantik", "pratik", "dedikoducu", "iyimser",
+		"hafif huysuz ama yardımsever",
+	},
+	Moods = {
+		"keyfi yerinde", "biraz yorgun", "işe yetişmeye çalışıyor", "rahat bir gününde", "aklı bir işte",
+		"az önce güzel bir haber almış", "kahve arıyor", "trafikten şikâyetçi",
+	},
+
+	-- Model yanıt vermezse / sohbet kapalı hesaplarda
+	FallbackLines = {
+		"Kusura bakma, şu an aklım başka yerde.",
+		"Hmm, ne diyecektim... unuttum!",
+		"Şu an biraz acelem var, sonra konuşalım mı?",
+	},
+	Greetings = {
+		"Merhaba! Güzel bir gün, değil mi?",
+		"Selam! Solara'da hayat hep hareketli.",
+		"Merhaba, nasılsın?",
+	},
+}
+]]></ProtectedString>
+</Properties>
+</Item>
 <Item class="ModuleScript" referent="RBX2B853EB9N"><Properties>
 <string name="Name">FrontEndConfig</string>
 
@@ -11138,7 +11211,10 @@ RemoteRegistry.Definitions = {
 		RequestHijack = { Class = "RemoteEvent", Direction = "C2S" },
 		HijackResult = { Class = "RemoteEvent", Direction = "S2C" }, -- (başarılı mı, neden)
 	},
-	NPCRemotes = {},
+	NPCRemotes = {
+		-- Yayayla yapay zekâlı sohbet: { Seed, Gender, Position, Message?, Token? } → { Ok, Text, Token, Name, Job, You, NoChat }
+		Talk = { Class = "RemoteFunction", Direction = "C2S" },
+	},
 	ShopRemotes = {},
 	InventoryRemotes = {},
 	TradeRemotes = {},
@@ -19012,6 +19088,326 @@ function VehicleTestService:Start()
 end
 
 return VehicleTestService
+]]></ProtectedString>
+</Properties>
+</Item>
+<Item class="ModuleScript" referent="RBX1312EAF8N"><Properties>
+<string name="Name">NPCChatService</string>
+
+<ProtectedString name="Source"><![CDATA[-- NPCChatService: yayalarla yapay zekâlı sohbet (Roblox'un kendi dil modeli: TextGenerator; ücretsiz, Roblox denetimli).
+--
+-- Yayalar her oyuncunun kendi cihazında (AmbientController); sohbet o oyuncuyla yaya arasındadır. İstemci
+-- NPCRemotes.Talk'u çağırır: { Seed, Gender ("F"/"M"), Position, Message?, Token? }. Sunucu:
+--   * kişiliği tohumdan kendisi üretir (ad, yaş, meslek, huy, ruh hâli) — istemci kişilik metni gönderemez
+--   * bağlam ekler: bulunduğu semt, saat (gece/gündüz), yakındaki dükkânlar (harita verisi)
+--   * oyuncunun mesajını ve modelin cevabını Roblox metin filtresinden geçirir (TextService)
+--   * yazılı sohbete izni olmayan hesaplarda serbest metin yok (TextChatService:CanUserChatAsync): kısa selam
+--   * oyuncu başına sıklık sınırı (NPCChatConfig), sohbet hafızası ContextToken ile (istemci saklar, geri gönderir)
+-- Model yanıt veremezse (sınır, kesinti, özellik kapalı) yaya kısa hazır bir cümle söyler; oyun bozulmaz.
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ServerStorage = game:GetService("ServerStorage")
+local TextService = game:GetService("TextService")
+local TextChatService = game:GetService("TextChatService")
+local Lighting = game:GetService("Lighting")
+
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local RemoteRegistry = require(Shared.RemoteRegistry)
+local MapDefinitions = require(Shared.MapDefinitions)
+local Businesses = require(Shared.Businesses)
+local RateLimiter = require(Shared.Utilities.RateLimiter)
+local Log = require(Shared.Utilities.Log).new("NPCChat")
+local Config = require(ReplicatedStorage.Modules.NPCChatConfig)
+
+local NPCChatService = {
+	Name = "NPCChatService",
+	Priority = 70,
+}
+
+local limiter = RateLimiter.new(Config.RateCapacity, Config.RateRefillPerSecond)
+local canChat: { [Player]: boolean } = {}
+-- oyuncu → yaya tohumu → { Generator, Used }
+local generators: { [Player]: { [number]: { Generator: Instance, Used: number } } } = {}
+local folder: Folder
+local warnedFailure = false
+
+local function pick(list, rng: Random)
+	return list[rng:NextInteger(1, #list)]
+end
+
+-- Tohumdan kişilik (her oyuncuda ve her seferinde aynı yaya için aynı kişi)
+function NPCChatService.Persona(seed: number, gender: string)
+	local rng = Random.new(math.floor(seed * 1e6) % 2147483647 + 1)
+	local female = gender == "F" or (gender ~= "M" and rng:NextNumber() < 0.5)
+	local first = pick(if female then Config.FemaleNames else Config.MaleNames, rng)
+	local traitA = pick(Config.Traits, rng)
+	local traitB = pick(Config.Traits, rng)
+	local traits = traitA
+	if traitB ~= traitA then
+		traits = traitA .. ", " .. traitB
+	end
+	return {
+		Name = first .. " " .. pick(Config.Surnames, rng),
+		First = first,
+		Female = female,
+		Age = rng:NextInteger(22, 66),
+		Job = pick(Config.Jobs, rng),
+		Traits = traits,
+		Mood = pick(Config.Moods, rng),
+	}
+end
+
+local function districtAt(position: Vector3)
+	local best, bestArea = nil, math.huge
+	local districts = MapDefinitions.GetData().Districts
+	for _, d in districts do
+		if position.X >= d.Min.X and position.X <= d.Max.X and position.Z >= d.Min.Y and position.Z <= d.Max.Y then
+			local area = (d.Max.X - d.Min.X) * (d.Max.Y - d.Min.Y)
+			if area < bestArea then
+				best, bestArea = d, area
+			end
+		end
+	end
+	return best
+end
+
+-- Yakındaki en fazla 4 işletme: "Ad (tür)"
+local function nearbyPlaces(position: Vector3): { string }
+	local found = {}
+	local pois = MapDefinitions.GetData().POIs
+	for _, poi in pois do
+		local d = (Vector3.new(poi.Position.X, 0, poi.Position.Z) - Vector3.new(position.X, 0, position.Z)).Magnitude
+		if d < 260 and poi.Name and poi.Name ~= "" then
+			table.insert(found, { Poi = poi, D = d })
+		end
+	end
+	table.sort(found, function(a, b)
+		return a.D < b.D
+	end)
+	local out = {}
+	for i = 1, math.min(4, #found) do
+		local poi = found[i].Poi
+		local t = Businesses.Types[poi.Type]
+		table.insert(out, poi.Name .. (if t and t.TR then " (" .. t.TR .. ")" else ""))
+	end
+	return out
+end
+
+local function timeOfDay(): string
+	local h = Lighting.ClockTime
+	if h < 5 then
+		return "gece yarısından sonra"
+	elseif h < 11 then
+		return "sabah"
+	elseif h < 14 then
+		return "öğle"
+	elseif h < 18 then
+		return "öğleden sonra"
+	elseif h < 21 then
+		return "akşam"
+	end
+	return "gece"
+end
+
+function NPCChatService.SystemPrompt(persona, position: Vector3): string
+	local district = districtAt(position)
+	local places = nearbyPlaces(position)
+	local where = if district then district.Name else "Solara"
+	local lines = {
+		"Senin adın " .. persona.Name .. ". Solara adlı güneşli bir sahil şehrinde yaşıyorsun. " .. persona.Age
+			.. " yaşındasın, " .. persona.Job .. " olarak çalışıyorsun. Kişiliğin: " .. persona.Traits .. ". Şu an "
+			.. persona.Mood .. ".",
+		"Şu an " .. where .. " semtinde, sokaktasın. Vakit " .. timeOfDay() .. ".",
+	}
+	if #places > 0 then
+		table.insert(lines, "Yakınındaki yerler: " .. table.concat(places, ", ") .. ".")
+	end
+	table.insert(lines, "Biri sokakta sana yaklaştı ve seninle konuşuyor. Gerçek bir şehir sakini gibi doğal cevap ver.")
+	table.insert(lines, "Kurallar: Karşındaki hangi dilde yazarsa o dilde cevap ver (varsayılan Türkçe). En fazla iki kısa cümle"
+		.. " kur. Yapay zekâ ya da oyun karakteri olduğunu söyleme. Gerçek markalardan, gerçek kişilerden, siyasetten,"
+		.. " dinden, şiddetten ve yetişkin konulardan bahsetme; nazikçe konuyu değiştir. Kişisel bilgi (gerçek ad, adres,"
+		.. " telefon, yaş, okul) sorma ve isteme. Para, görev ya da eşya vaat etme. Kaba davranırlarsa kibarca uzaklaş.")
+	return table.concat(lines, "\n")
+end
+
+local function filterFor(player: Player, text: string, broadcast: boolean): string?
+	local ok, result = pcall(function()
+		local filtered = TextService:FilterStringAsync(text, player.UserId, Enum.TextFilterContext.PrivateChat)
+		return if broadcast then filtered:GetNonChatStringForBroadcastAsync() else filtered:GetNonChatStringForUserAsync(player.UserId)
+	end)
+	return if ok then result else nil
+end
+
+local function playerCanChat(player: Player): boolean
+	local cached = canChat[player]
+	if cached ~= nil then
+		return cached
+	end
+	local ok, result = pcall(function()
+		return TextChatService:CanUserChatAsync(player.UserId)
+	end)
+	local allowed = ok and result == true
+	canChat[player] = allowed
+	return allowed
+end
+
+local function generatorFor(player: Player, seed: number, prompt: string)
+	local byPlayer = generators[player]
+	if not byPlayer then
+		byPlayer = {}
+		generators[player] = byPlayer
+	end
+	local entry = byPlayer[seed]
+	if not entry then
+		-- oyuncu başına en fazla MaxGenerators sohbet (en eski kullanılan silinir)
+		local count, oldestSeed, oldestUsed = 0, nil, math.huge
+		for s, e in byPlayer do
+			count += 1
+			if e.Used < oldestUsed then
+				oldestSeed, oldestUsed = s, e.Used
+			end
+		end
+		if count >= Config.MaxGenerators and oldestSeed ~= nil then
+			byPlayer[oldestSeed].Generator:Destroy()
+			byPlayer[oldestSeed] = nil
+		end
+		local gen = Instance.new("TextGenerator")
+		gen.Name = "NPC_" .. player.UserId .. "_" .. tostring(seed)
+		gen.SystemPrompt = prompt
+		gen.Temperature = Config.Temperature
+		gen.TopP = Config.TopP
+		gen.Parent = folder
+		entry = { Generator = gen, Used = os.clock() }
+		byPlayer[seed] = entry
+	end
+	entry.Used = os.clock()
+	return entry.Generator
+end
+
+local function fallback(rng: Random?): string
+	local r = rng or Random.new()
+	return Config.FallbackLines[r:NextInteger(1, #Config.FallbackLines)]
+end
+
+-- Tek konuşma adımı. Döndürür: { Ok, Text, Token?, Name, Job, You? (filtrelenmiş oyuncu mesajı), NoChat? }
+function NPCChatService.Talk(player: Player, request: any)
+	if not Config.Enabled then
+		return { Ok = false, Text = fallback() }
+	end
+	if type(request) ~= "table" or type(request.Seed) ~= "number" or typeof(request.Position) ~= "Vector3" then
+		return { Ok = false, Text = fallback() }
+	end
+	local pos = request.Position
+	if request.Seed ~= request.Seed or math.abs(request.Seed) > 1e6 or pos.X ~= pos.X or pos.Y ~= pos.Y or pos.Z ~= pos.Z then
+		return { Ok = false, Text = fallback() } -- NaN / aşırı değer
+	end
+	local seed = math.floor(request.Seed * 1e6) / 1e6
+	local gender = if request.Gender == "F" or request.Gender == "M" then request.Gender else "N"
+	local persona = NPCChatService.Persona(seed, gender)
+	local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart") :: BasePart?
+	if not root or (root.Position - request.Position).Magnitude > Config.EndDistance + 10 then
+		return { Ok = false, Text = "", Name = persona.Name, Job = persona.Job }
+	end
+	if not limiter:Check(player) then
+		return { Ok = false, Text = "Bir saniye, nefes alayım!", Name = persona.Name, Job = persona.Job, Busy = true }
+	end
+	local message = request.Message
+	if message ~= nil and (type(message) ~= "string" or #message == 0 or utf8.len(message) == nil) then
+		return { Ok = false, Text = fallback(), Name = persona.Name, Job = persona.Job }
+	end
+	if message and utf8.len(message) > Config.MaxMessageLength then
+		message = string.sub(message, 1, utf8.offset(message, Config.MaxMessageLength + 1) - 1)
+	end
+	if not playerCanChat(player) then
+		-- yazılı sohbete izni olmayan hesap: serbest metin yok, kısa hazır selam
+		local r = Random.new(math.floor(seed * 1e6) % 100000 + 1)
+		return { Ok = true, NoChat = true, Text = Config.Greetings[r:NextInteger(1, #Config.Greetings)], Name = persona.Name, Job = persona.Job }
+	end
+	local you = nil
+	if message then
+		you = filterFor(player, message, true)
+		if not you then
+			return { Ok = false, Text = fallback(), Name = persona.Name, Job = persona.Job }
+		end
+	end
+	local token = if type(request.Token) == "string" and #request.Token < 20000 then request.Token else nil
+	local gen = generatorFor(player, seed, NPCChatService.SystemPrompt(persona, request.Position))
+	local userPrompt = you or "(Biri sana yaklaşıp selam verdi. Kısaca kendini tanıtarak selam ver.)"
+	local ok, result = pcall(function()
+		return (gen :: any):GenerateTextAsync({ UserPrompt = userPrompt, ContextToken = token, MaxTokens = Config.MaxTokens })
+	end)
+	if not ok or type(result) ~= "table" or type(result.GeneratedText) ~= "string" then
+		if not warnedFailure then
+			warnedFailure = true
+			Log.Warn("TextGenerator yanıt vermedi (özellik kapalı ya da sınır aşıldı olabilir):", result)
+		end
+		return { Ok = false, Text = fallback(), Name = persona.Name, Job = persona.Job, You = you, Token = token }
+	end
+	local reply = string.gsub(result.GeneratedText, "^%s+", "")
+	reply = string.gsub(reply, "%s+$", "")
+	if utf8.len(reply) and utf8.len(reply) > Config.MaxReplyLength then
+		reply = string.sub(reply, 1, utf8.offset(reply, Config.MaxReplyLength + 1) - 1) .. "…"
+	end
+	local shown = if reply ~= "" then filterFor(player, reply, false) else nil
+	return {
+		Ok = shown ~= nil,
+		Text = shown or fallback(),
+		Token = if type(result.ContextToken) == "string" then result.ContextToken else token,
+		Name = persona.Name,
+		Job = persona.Job,
+		You = you,
+	}
+end
+
+function NPCChatService:Init()
+	folder = Instance.new("Folder")
+	folder.Name = "NPCChatGenerators"
+	folder.Parent = ServerStorage
+end
+
+function NPCChatService:Start()
+	local remote = RemoteRegistry.Get("NPCRemotes", "Talk") :: RemoteFunction
+	remote.OnServerInvoke = function(player, request)
+		local ok, result = pcall(NPCChatService.Talk, player, request)
+		if ok then
+			return result
+		end
+		Log.Warn("Sohbet hatası:", result)
+		return { Ok = false, Text = fallback() }
+	end
+	Players.PlayerRemoving:Connect(function(player)
+		canChat[player] = nil
+		limiter:Forget(player)
+		local byPlayer = generators[player]
+		generators[player] = nil
+		if byPlayer then
+			for _, entry in byPlayer do
+				entry.Generator:Destroy()
+			end
+		end
+	end)
+	-- kullanılmayan üreticileri temizle
+	task.spawn(function()
+		while true do
+			task.wait(60)
+			local now = os.clock()
+			for player, byPlayer in generators do
+				for seed, entry in byPlayer do
+					if now - entry.Used > Config.GeneratorIdleSeconds then
+						entry.Generator:Destroy()
+						byPlayer[seed] = nil
+					end
+				end
+				if next(byPlayer) == nil then
+					generators[player] = nil
+				end
+			end
+		end
+	end)
+end
+
+return NPCChatService
 ]]></ProtectedString>
 </Properties>
 </Item>
@@ -28742,6 +29138,7 @@ local Entrances = require(AmbientShared:WaitForChild("Entrances"))
 local MapDefinitions = require(Shared:WaitForChild("MapDefinitions"))
 local VehicleDefinitions = require(Shared:WaitForChild("VehicleDefinitions"))
 local AmbientConfig = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("AmbientConfig"))
+local ChatConfig = require(ReplicatedStorage.Modules:WaitForChild("NPCChatConfig"))
 local Log = require(Shared.Utilities.Log).new("Ambient")
 local RemoteRegistry = require(Shared.RemoteRegistry)
 
@@ -28751,6 +29148,7 @@ local PedRenderer = require(AmbientFolder:WaitForChild("PedRenderer"))
 local SignalRenderer = require(AmbientFolder:WaitForChild("SignalRenderer"))
 local DoorRenderer = require(AmbientFolder:WaitForChild("DoorRenderer"))
 local AmbientDebug = require(AmbientFolder:WaitForChild("AmbientDebug"))
+local NPCChat = require(AmbientFolder:WaitForChild("NPCChat"))
 
 local AmbientController = {
 	Name = "AmbientController",
@@ -28784,6 +29182,12 @@ local function releaseCar(model: Model)
 	detachDriver(model)
 	TrafficRenderer.Release(model)
 end
+
+-- ===== Yayayla sohbet (NPCChat): yakındaki kaldırımdaki yayada "Konuş [E]" → yaya simülasyondan çıkar, durur, oyuncuya
+-- döner; sohbet bitince (panel kapandı, uzaklaşıldı, araca binildi, uzun süre yazılmadı) kaldırıma geri katılıp yürür. =====
+local TALK_SCAN2 = 14 * 14 -- istem bu mesafedeki yayalarda kurulur/açılır (görünme mesafesi PromptDistance)
+local talk: any = nil -- { Model, Pos, HX, HZ, WalkHX, WalkHZ, Seed, Speed, Anim }
+local talkPrompts: { [Model]: ProximityPrompt } = {}
 -- Kaza modelleri: yaya (ragdoll → kalkma → yürümeye devam) ya da araç (fizik → toparlanma → trafiğe dönüş).
 -- Geri dönemeyenler (devrilmiş araç, yol bulamayan yaya) eskisi gibi oyuncu uzaklaşınca havuza döner.
 local wrecks: { any } = {}
@@ -29007,6 +29411,10 @@ local function gatherObstacles(focus: Vector3)
 			end
 		end
 	end
+	if talk then
+		-- sohbet eden yaya kaldırımda durur: diğer yayalar etrafından geçer
+		table.insert(forPeds, { X = talk.Pos.X, Z = talk.Pos.Z, R = 1.5, Kind = "Player", Speed = 0 })
+	end
 	for _, p in peds.Peds do
 		if p.State == "Geç" or (p.Link and p.Link.Crossing) then
 			local spd = p.CurSpeed or 0
@@ -29054,6 +29462,13 @@ local function clearAll()
 	if not traffic then
 		return
 	end
+	if talk then
+		local t = talk
+		talk = nil
+		NPCChat.Stop()
+		PedRenderer.Release(t.Model)
+	end
+	talkPrompts = {}
 	for _, v in table.clone(traffic.Vehicles) do
 		traffic:Remove(v, "Kapat")
 	end
@@ -29297,13 +29712,149 @@ local function updateDrivers()
 		end
 	end
 	local humanoid = controllers.CharacterController:GetHumanoid()
-	local onFoot = humanoid ~= nil and humanoid.SeatPart == nil and humanoid.Health > 0 and not hijacking
+	local onFoot = humanoid ~= nil and humanoid.SeatPart == nil and humanoid.Health > 0 and not hijacking and not talk
 	for v, model in vehicleModels do
 		local prompt = TrafficRenderer.HijackPrompt(model)
 		if prompt then
 			prompt.Enabled = onFoot and drivers[model] ~= nil and (v.V or 0) < 14
 		end
 	end
+end
+
+-- ===== Sohbet =====
+-- Yakındaki uygun yayalarda "Konuş" istemini aç, diğerlerinde kapat (10 Hz). Uygun: kaldırımda (karşıya geçmiyor,
+-- kapıda değil), görünür, kazadan dönmüyor; oyuncu yaya hâlinde, araç çalmıyor, başka sohbette değil.
+local function talkEligible(p): boolean
+	if p.State == "Geç" or p.State == "Kapı" or p.State == "Gir" or p.State == "Çık" then
+		return false
+	end
+	return not (p.Link and p.Link.Crossing) and (p.Fade or 0) < 0.05 and p.Return == nil
+end
+
+local function updateTalkPrompts()
+	local on = {}
+	local root = controllers.CharacterController:GetRootPart()
+	local humanoid = controllers.CharacterController:GetHumanoid()
+	if ChatConfig.Enabled and root and humanoid and humanoid.SeatPart == nil and humanoid.Health > 0 and not hijacking and not talk then
+		local rp = root.Position
+		for p, model in pedModels do
+			local dx, dz = p.X - rp.X, p.Z - rp.Z
+			if dx * dx + dz * dz < TALK_SCAN2 and math.abs(p.Y - rp.Y) < 8 and talkEligible(p) then
+				local prompt = PedRenderer.TalkPrompt(model, ChatConfig)
+				if prompt then
+					on[model] = prompt
+					if not prompt.Enabled then
+						prompt.Enabled = true
+					end
+				end
+			end
+		end
+	end
+	for model, prompt in talkPrompts do
+		if not on[model] then
+			prompt.Enabled = false
+		end
+	end
+	talkPrompts = on
+end
+
+-- Sohbeti bitir: yaya en yakın kaldırım çizgisine geri katılır ve eski yönünde yürümeye devam eder
+local function endTalk(_reason: string)
+	local t = talk
+	if not t then
+		return
+	end
+	talk = nil
+	NPCChat.Stop()
+	local p = peds and peds:Rejoin(t.Pos.X, t.Pos.Z, t.WalkHX, t.WalkHZ, t.Seed, t.Speed, 18)
+	if p then
+		pedModels[p] = t.Model
+		p.Anim = t.Anim or PedAnim.new(t.Seed)
+		p.PX, p.PY, p.PZ, p.PHX, p.PHZ = p.X, p.Y, p.Z, p.HX, p.HZ
+		-- durduğu yerden ve oyuncuya bakan yönden yürüme çizgisine yumuşak geçiş
+		p.Return = { Offset = t.Pos - Vector3.new(p.X, p.Y, p.Z), HX = t.HX, HZ = t.HZ, T = 0, D = 0.8 }
+	else
+		PedRenderer.Release(t.Model) -- yakında kaldırım yok (olmamalı): havuza döner
+	end
+end
+
+local function startTalk(model: Model)
+	if talk or hijacking or not peds or not ChatConfig.Enabled then
+		return
+	end
+	local p = nil
+	for sp, m in pedModels do
+		if m == model then
+			p = sp
+			break
+		end
+	end
+	local root = controllers.CharacterController:GetRootPart()
+	local humanoid = controllers.CharacterController:GetHumanoid()
+	local pedRoot = model.PrimaryPart
+	if not p or not root or not humanoid or not pedRoot or humanoid.SeatPart or humanoid.Health <= 0 or not talkEligible(p) then
+		return
+	end
+	-- simülasyondan çıkar (model bizde kalır; syncModels havuza vermez çünkü eşleme önce silinir)
+	pedModels[p] = nil
+	peds:Remove(p, "Sohbet")
+	local seed = p.Seed or math.random()
+	local here = pedRoot.Position
+	local hx, hz = p.HX or 0, p.HZ or 1
+	talk = {
+		Model = model, Pos = Vector3.new(here.X, p.Y, here.Z), HX = hx, HZ = hz, WalkHX = hx, WalkHZ = hz,
+		Seed = seed, Speed = p.Speed, Anim = p.Anim or PedAnim.new(seed),
+	}
+	for m, prompt in talkPrompts do
+		prompt.Enabled = false
+		talkPrompts[m] = nil
+	end
+	NPCChat.Start({
+		Model = model, Seed = seed, Gender = PedRenderer.Gender(model), Position = talk.Pos,
+		OnClose = function()
+			endTalk("Kapat")
+		end,
+	})
+end
+
+-- Her kare: sohbet eden yaya oyuncuya döner, duruş animasyonu; bitme koşulları
+local TURN_RATE = 5 -- rad/sn
+local function updateTalk(dt: number)
+	local t = talk
+	if not t then
+		return
+	end
+	local root = controllers.CharacterController:GetRootPart()
+	local humanoid = controllers.CharacterController:GetHumanoid()
+	local reason = nil
+	if not NPCChat.IsOpen() then
+		reason = "Kapat"
+	elseif not root or not humanoid or humanoid.Health <= 0 then
+		reason = "Oyuncu"
+	elseif humanoid.SeatPart then
+		reason = "Araç"
+	elseif NPCChat.IdleFor() > ChatConfig.IdleTimeout then
+		reason = "Sessiz"
+	elseif Vector3.new(root.Position.X - t.Pos.X, 0, root.Position.Z - t.Pos.Z).Magnitude > ChatConfig.EndDistance then
+		reason = "Uzak"
+	end
+	if reason then
+		endTalk(reason)
+		return
+	end
+	local rp = (root :: BasePart).Position
+	local tx, tz = rp.X - t.Pos.X, rp.Z - t.Pos.Z
+	local turn = 0
+	if tx * tx + tz * tz > 0.25 then
+		local cur = math.atan2(t.HX, t.HZ)
+		local diff = (math.atan2(tx, tz) - cur + math.pi) % (2 * math.pi) - math.pi
+		local step = math.clamp(diff, -TURN_RATE * dt, TURN_RATE * dt)
+		cur += step
+		t.HX, t.HZ = math.sin(cur), math.cos(cur)
+		turn = step / math.max(dt, 1e-3) -- render'daki -atan2(cross, dot) ile aynı işaret
+	end
+	PedRenderer.Place(t.Model, t.Pos, t.HX, t.HZ)
+	PedRenderer.Pose(t.Model, PedAnim.Step(t.Anim, math.min(dt, 0.1), 0, turn, 0))
 end
 
 local function simStep()
@@ -29367,6 +29918,7 @@ local function simStep()
 	end
 	DoorRenderer.Update(focus, peds.Time) -- yakındaki kapılar (havuzlu), yaya giriş/çıkışında açılır
 	updateDrivers()
+	updateTalkPrompts()
 	if debugOn and now - lastDebug > AmbientConfig.Debug.RefreshInterval then
 		lastDebug = now
 		AmbientDebug.Update({
@@ -29446,6 +29998,13 @@ local function render(dt: number, alpha: number)
 			x += back.Offset.X * (1 - e)
 			y += back.Offset.Y * (1 - e)
 			z += back.Offset.Z * (1 - e)
+			if back.HX then
+				-- sohbetten dönüş: oyuncuya bakan yönden yürüme yönüne (açıyla; 180°'de de düzgün)
+				local a0 = math.atan2(back.HX, back.HZ)
+				local d = (math.atan2(hx, hz) - a0 + math.pi) % (2 * math.pi) - math.pi
+				local a = a0 + d * e
+				hx, hz = math.sin(a), math.cos(a)
+			end
 			if e >= 1 then
 				p.Return = nil
 			end
@@ -29661,6 +30220,13 @@ local function onHeartbeat(dt: number)
 	if not ok then
 		Log.Error("Kaza güncellemesi hata verdi:", err)
 	end
+	if talk then
+		local okTalk, errTalk = pcall(updateTalk, dt)
+		if not okTalk then
+			Log.Error("Sohbet güncellemesi hata verdi:", errTalk)
+			endTalk("Hata")
+		end
+	end
 end
 
 function AmbientController:Init(allControllers)
@@ -29717,7 +30283,18 @@ function AmbientController:Start()
 		hijackRemote = RemoteRegistry.Get("VehicleRemotes", "RequestHijack") :: RemoteEvent
 		hijackResult = RemoteRegistry.Get("VehicleRemotes", "HijackResult") :: RemoteEvent
 	end)
+	NPCChat.Init()
 	ProximityPromptService.PromptTriggered:Connect(function(prompt)
+		if prompt.Name == "TalkPrompt" then
+			local model = prompt:FindFirstAncestorOfClass("Model")
+			if model then
+				local ok, err = pcall(startTalk, model)
+				if not ok then
+					Log.Warn("Sohbet başlatılamadı:", err)
+				end
+			end
+			return
+		end
 		if prompt.Name ~= "HijackPrompt" then
 			return
 		end
@@ -35054,6 +35631,403 @@ return DoorRenderer
 ]]></ProtectedString>
 </Properties>
 </Item>
+<Item class="ModuleScript" referent="RBX30994F25N"><Properties>
+<string name="Name">NPCChat</string>
+
+<ProtectedString name="Source"><![CDATA[-- NPCChat: yayayla yapay zekâlı sohbetin ekranı (sadece bu oyuncuda). Sunucu: NPCChatService (Roblox TextGenerator).
+--
+--   * Altta sohbet paneli: yayanın adı ve mesleği, son mesajlar, yazı kutusu (Enter ya da "Gönder"), kapat (X).
+--   * Yayanın başının üstünde konuşma balonu: beklerken "...", sonra cevap (birkaç saniye görünür).
+--   * Sohbet hafızası sunucunun ContextToken'ı ile (burada saklanır, her mesajda geri gönderilir).
+-- Hangi yayayla konuşulacağına, yayanın durmasına ve sohbetin bitmesine AmbientController karar verir.
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local RemoteRegistry = require(Shared.RemoteRegistry)
+local Config = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("NPCChatConfig"))
+
+local NPCChat = {}
+
+local player = Players.LocalPlayer
+local remote: RemoteFunction? = nil
+local gui: ScreenGui? = nil
+local ui: any = nil
+local session: any = nil -- { Model, Seed, Gender, Position, Token, Name, Job, Busy, LastActive, OnClose }
+local bubble: BillboardGui? = nil
+local bubbleToken = 0
+
+local DARK = Color3.fromRGB(18, 22, 30)
+local ACCENT = Color3.fromRGB(255, 150, 70)
+
+local function corner(parent: Instance, r: number)
+	local c = Instance.new("UICorner")
+	c.CornerRadius = UDim.new(0, r)
+	c.Parent = parent
+end
+
+local function label(parent: Instance, text: string, size: number, color: Color3, bold: boolean?): TextLabel
+	local l = Instance.new("TextLabel")
+	l.BackgroundTransparency = 1
+	l.Text = text
+	l.TextSize = size
+	l.TextColor3 = color
+	l.Font = if bold then Enum.Font.GothamBold else Enum.Font.Gotham
+	l.TextXAlignment = Enum.TextXAlignment.Left
+	l.TextWrapped = true
+	l.Parent = parent
+	return l
+end
+
+local function build()
+	local screen = Instance.new("ScreenGui")
+	screen.Name = "SolaraNPCChat"
+	screen.ResetOnSpawn = false
+	screen.IgnoreGuiInset = false
+	screen.DisplayOrder = 20
+	screen.Enabled = false
+	screen.Parent = player:WaitForChild("PlayerGui")
+
+	local panel = Instance.new("Frame")
+	panel.Name = "Panel"
+	panel.AnchorPoint = Vector2.new(0.5, 1)
+	panel.Position = UDim2.new(0.5, 0, 1, -16)
+	panel.Size = UDim2.new(0.92, 0, 0, 236)
+	panel.BackgroundColor3 = DARK
+	panel.BackgroundTransparency = 0.12
+	panel.Parent = screen
+	corner(panel, 14)
+	local limit = Instance.new("UISizeConstraint")
+	limit.MaxSize = Vector2.new(560, 236)
+	limit.Parent = panel
+	local pad = Instance.new("UIPadding")
+	pad.PaddingLeft, pad.PaddingRight = UDim.new(0, 14), UDim.new(0, 14)
+	pad.PaddingTop, pad.PaddingBottom = UDim.new(0, 10), UDim.new(0, 12)
+	pad.Parent = panel
+
+	local title = label(panel, "", 18, Color3.new(1, 1, 1), true)
+	title.Name = "Title"
+	title.Size = UDim2.new(1, -40, 0, 22)
+	local subtitle = label(panel, "", 14, Color3.fromRGB(180, 190, 205))
+	subtitle.Name = "Subtitle"
+	subtitle.Position = UDim2.new(0, 0, 0, 22)
+	subtitle.Size = UDim2.new(1, -40, 0, 18)
+
+	local close = Instance.new("TextButton")
+	close.Name = "Close"
+	close.AnchorPoint = Vector2.new(1, 0)
+	close.Position = UDim2.new(1, 0, 0, 0)
+	close.Size = UDim2.new(0, 32, 0, 32)
+	close.BackgroundColor3 = Color3.fromRGB(50, 56, 68)
+	close.Text = "✕"
+	close.TextSize = 16
+	close.TextColor3 = Color3.new(1, 1, 1)
+	close.Font = Enum.Font.GothamBold
+	close.Parent = panel
+	corner(close, 8)
+
+	local log = Instance.new("Frame")
+	log.Name = "Log"
+	log.BackgroundTransparency = 1
+	log.Position = UDim2.new(0, 0, 0, 46)
+	log.Size = UDim2.new(1, 0, 1, -46 - 46)
+	log.ClipsDescendants = true
+	log.Parent = panel
+	local list = Instance.new("UIListLayout")
+	list.VerticalAlignment = Enum.VerticalAlignment.Bottom
+	list.SortOrder = Enum.SortOrder.LayoutOrder
+	list.Padding = UDim.new(0, 4)
+	list.Parent = log
+
+	local box = Instance.new("TextBox")
+	box.Name = "Input"
+	box.AnchorPoint = Vector2.new(0, 1)
+	box.Position = UDim2.new(0, 0, 1, 0)
+	box.Size = UDim2.new(1, -104, 0, 38)
+	box.BackgroundColor3 = Color3.fromRGB(34, 40, 52)
+	box.PlaceholderText = "Bir şey yaz…"
+	box.PlaceholderColor3 = Color3.fromRGB(130, 140, 155)
+	box.Text = ""
+	box.TextColor3 = Color3.new(1, 1, 1)
+	box.TextSize = 16
+	box.Font = Enum.Font.Gotham
+	box.TextXAlignment = Enum.TextXAlignment.Left
+	box.ClearTextOnFocus = false
+	box.Parent = panel
+	corner(box, 8)
+	local boxPad = Instance.new("UIPadding")
+	boxPad.PaddingLeft = UDim.new(0, 10)
+	boxPad.Parent = box
+
+	local send = Instance.new("TextButton")
+	send.Name = "Send"
+	send.AnchorPoint = Vector2.new(1, 1)
+	send.Position = UDim2.new(1, 0, 1, 0)
+	send.Size = UDim2.new(0, 96, 0, 38)
+	send.BackgroundColor3 = ACCENT
+	send.Text = "Gönder"
+	send.TextSize = 16
+	send.TextColor3 = Color3.fromRGB(30, 20, 10)
+	send.Font = Enum.Font.GothamBold
+	send.Parent = panel
+	corner(send, 8)
+
+	gui = screen
+	ui = { Panel = panel, Title = title, Subtitle = subtitle, Close = close, Log = log, Box = box, Send = send, Order = 0 }
+
+	close.Activated:Connect(function()
+		NPCChat.Close()
+	end)
+	send.Activated:Connect(function()
+		NPCChat.SendTyped()
+	end)
+	box.FocusLost:Connect(function(enterPressed)
+		if enterPressed then
+			NPCChat.SendTyped()
+		end
+	end)
+	box:GetPropertyChangedSignal("Text"):Connect(function()
+		local t = box.Text
+		if utf8.len(t) and utf8.len(t) > Config.MaxMessageLength then
+			box.Text = string.sub(t, 1, utf8.offset(t, Config.MaxMessageLength + 1) - 1)
+		end
+	end)
+end
+
+local function addLine(who: string, text: string, color: Color3)
+	if not ui then
+		return
+	end
+	ui.Order += 1
+	local l = label(ui.Log, "", 15, Color3.fromRGB(230, 235, 242))
+	l.RichText = false
+	l.AutomaticSize = Enum.AutomaticSize.Y
+	l.Size = UDim2.new(1, 0, 0, 0)
+	l.LayoutOrder = ui.Order
+	l.Text = who .. ": " .. text
+	l.TextColor3 = color
+	local lines = {}
+	for _, c in ui.Log:GetChildren() do
+		if c:IsA("TextLabel") then
+			table.insert(lines, c)
+		end
+	end
+	table.sort(lines, function(a, b)
+		return a.LayoutOrder < b.LayoutOrder
+	end)
+	for i = 1, #lines - 6 do -- son 6 satır
+		lines[i]:Destroy()
+	end
+end
+
+-- Yayanın başının üstündeki balon
+local function showBubble(model: Model, text: string, seconds: number?)
+	local root = model.PrimaryPart
+	if not root then
+		return
+	end
+	if not bubble or not bubble.Parent then
+		local b = Instance.new("BillboardGui")
+		b.Name = "TalkBubble"
+		b.Size = UDim2.fromOffset(250, 110)
+		b.StudsOffset = Vector3.new(0, 3.9, 0)
+		b.LightInfluence = 0
+		b.MaxDistance = 70
+		b.AlwaysOnTop = false
+		local frame = Instance.new("Frame")
+		frame.Name = "Box"
+		frame.AnchorPoint = Vector2.new(0.5, 1)
+		frame.Position = UDim2.new(0.5, 0, 1, 0)
+		frame.Size = UDim2.new(1, 0, 0, 0)
+		frame.AutomaticSize = Enum.AutomaticSize.Y
+		frame.BackgroundColor3 = Color3.new(1, 1, 1)
+		frame.BackgroundTransparency = 0.05
+		frame.Parent = b
+		corner(frame, 10)
+		local p = Instance.new("UIPadding")
+		p.PaddingLeft, p.PaddingRight, p.PaddingTop, p.PaddingBottom = UDim.new(0, 8), UDim.new(0, 8), UDim.new(0, 5), UDim.new(0, 5)
+		p.Parent = frame
+		local t = Instance.new("TextLabel")
+		t.Name = "Text"
+		t.BackgroundTransparency = 1
+		t.Size = UDim2.new(1, 0, 0, 0)
+		t.AutomaticSize = Enum.AutomaticSize.Y
+		t.TextWrapped = true
+		t.TextSize = 15
+		t.Font = Enum.Font.Gotham
+		t.TextColor3 = Color3.fromRGB(25, 28, 35)
+		t.Parent = frame
+		bubble = b
+	end
+	local b = bubble :: BillboardGui
+	b.Adornee = root
+	b.Parent = player:FindFirstChildOfClass("PlayerGui") -- BillboardGui doğrudan PlayerGui altında çizilir
+	local textLabel = b:FindFirstChild("Box") and (b :: any).Box:FindFirstChild("Text")
+	if textLabel then
+		textLabel.Text = text
+	end
+	b.Enabled = true
+	bubbleToken += 1
+	local my = bubbleToken
+	if seconds then
+		task.delay(seconds, function()
+			if bubbleToken == my and bubble then
+				bubble.Enabled = false
+			end
+		end)
+	end
+end
+
+local function hideBubble()
+	bubbleToken += 1
+	if bubble then
+		bubble.Enabled = false
+	end
+end
+
+local function setBusy(busy: boolean)
+	if not session or not ui then
+		return
+	end
+	session.Busy = busy
+	ui.Send.AutoButtonColor = not busy
+	ui.Send.BackgroundTransparency = if busy then 0.5 else 0
+	ui.Box.TextEditable = not busy and not session.NoChat
+end
+
+-- Sunucuya bir adım (message nil: selamlaşma)
+local function ask(message: string?)
+	local s = session
+	if not s or not remote then
+		return
+	end
+	setBusy(true)
+	showBubble(s.Model, "...")
+	local ok, result = pcall(function()
+		return (remote :: RemoteFunction):InvokeServer({
+			Seed = s.Seed, Gender = s.Gender, Position = s.Position, Message = message, Token = s.Token,
+		})
+	end)
+	if session ~= s then
+		return -- bu arada sohbet bitti
+	end
+	setBusy(false)
+	if not ok or type(result) ~= "table" then
+		showBubble(s.Model, Config.FallbackLines[1], Config.BubbleSeconds)
+		return
+	end
+	if type(result.Name) == "string" and result.Name ~= "" then
+		s.Name = result.Name
+		ui.Title.Text = result.Name
+	end
+	if type(result.Job) == "string" then
+		ui.Subtitle.Text = result.Job
+	end
+	if type(result.Token) == "string" then
+		s.Token = result.Token
+	end
+	if type(result.You) == "string" and message then
+		addLine("Sen", result.You, Color3.fromRGB(150, 205, 255))
+	end
+	if result.NoChat and not s.NoChat then
+		s.NoChat = true
+		ui.Box.TextEditable = false
+		ui.Box.PlaceholderText = "Hesap ayarların yazılı sohbete izin vermiyor."
+		ui.Send.Visible = false
+	end
+	local text = if type(result.Text) == "string" then result.Text else ""
+	if text ~= "" then
+		addLine(s.Name or "Yaya", text, Color3.fromRGB(255, 220, 170))
+		showBubble(s.Model, text, Config.BubbleSeconds)
+	else
+		hideBubble()
+	end
+	s.LastActive = os.clock()
+end
+
+function NPCChat.Init()
+	task.spawn(function()
+		remote = RemoteRegistry.Get("NPCRemotes", "Talk") :: RemoteFunction
+	end)
+end
+
+function NPCChat.IsOpen(): boolean
+	return session ~= nil
+end
+
+-- Son etkinlikten bu yana geçen süre (sn)
+function NPCChat.IdleFor(): number
+	return if session then os.clock() - session.LastActive else 0
+end
+
+-- info: { Model, Seed, Gender ("F"/"M"/"N"), Position (Vector3), OnClose: () -> () }
+function NPCChat.Start(info)
+	if not gui then
+		build()
+	end
+	NPCChat.Stop()
+	session = {
+		Model = info.Model, Seed = info.Seed, Gender = info.Gender, Position = info.Position, OnClose = info.OnClose,
+		Token = nil, Name = nil, Busy = false, NoChat = false, LastActive = os.clock(),
+	}
+	for _, c in ui.Log:GetChildren() do
+		if c:IsA("TextLabel") then
+			c:Destroy()
+		end
+	end
+	ui.Title.Text = "…"
+	ui.Subtitle.Text = ""
+	ui.Box.Text = ""
+	ui.Box.PlaceholderText = "Bir şey yaz…"
+	ui.Box.TextEditable = true
+	ui.Send.Visible = true
+	local screen = gui :: ScreenGui
+	screen.Enabled = true
+	task.spawn(ask, nil) -- yaya selam verir
+end
+
+-- Yazılanı gönder
+function NPCChat.SendTyped()
+	local s = session
+	if not s or s.Busy or s.NoChat or not ui then
+		return
+	end
+	local text = string.gsub(ui.Box.Text, "^%s+", "")
+	text = string.gsub(text, "%s+$", "")
+	if text == "" then
+		return
+	end
+	ui.Box.Text = ""
+	s.LastActive = os.clock()
+	task.spawn(ask, text)
+end
+
+-- Paneli kapat (oyuncu kapattı): AmbientController'a haber verir
+function NPCChat.Close()
+	local s = session
+	if s and s.OnClose then
+		s.OnClose()
+	end
+	NPCChat.Stop()
+end
+
+-- Sohbeti sessizce bitir (AmbientController çağırır)
+function NPCChat.Stop()
+	session = nil
+	hideBubble()
+	if gui then
+		gui.Enabled = false
+	end
+	if ui then
+		ui.Box:ReleaseFocus()
+	end
+end
+
+return NPCChat
+]]></ProtectedString>
+</Properties>
+</Item>
 <Item class="ModuleScript" referent="RBX64DAFF3AN"><Properties>
 <string name="Name">PedMeshRig</string>
 
@@ -35904,6 +36878,10 @@ function PedRenderer.Release(model: Model)
 	end
 	if root then
 		root.CanCollide = false
+		local talk = root:FindFirstChild("TalkPrompt") :: ProximityPrompt?
+		if talk then
+			talk.Enabled = false
+		end
 	end
 	PedRenderer.SetFade(model, 0)
 	model.Parent = nil
@@ -35913,6 +36891,43 @@ end
 function PedRenderer.Scale(model: Model): number
 	local rig = rigOf[model]
 	return rig and rig.Scale or 1
+end
+
+-- Cinsiyet (sohbet kişiliği için): gerçekçi yayada "F"/"M", kodla kurulan yayada "N" (belirsiz)
+function PedRenderer.Gender(model: Model): string
+	local rig = rigOf[model] :: any
+	if rig and rig.Mesh and type(rig.Id) == "string" then
+		local g = string.sub(rig.Id, 1, 1)
+		if g == "F" or g == "M" then
+			return g
+		end
+	end
+	return "N"
+end
+
+-- "Konuş" istemi (yayanın kökünde; ilk istekte kurulur, AmbientController açıp kapatır)
+function PedRenderer.TalkPrompt(model: Model, chatConfig: any): ProximityPrompt?
+	local root = model.PrimaryPart
+	if not root then
+		return nil
+	end
+	local prompt = root:FindFirstChild("TalkPrompt") :: ProximityPrompt?
+	if not prompt and chatConfig then
+		local p = Instance.new("ProximityPrompt")
+		p.Name = "TalkPrompt"
+		p.ActionText = "Konuş"
+		p.ObjectText = ""
+		p.KeyboardKeyCode = chatConfig.PromptKey
+		p.GamepadKeyCode = chatConfig.PromptGamepad
+		p.HoldDuration = 0
+		p.MaxActivationDistance = chatConfig.PromptDistance
+		p.RequiresLineOfSight = false
+		p.UIOffset = Vector2.new(0, 0)
+		p.Enabled = false
+		p.Parent = root
+		prompt = p
+	end
+	return prompt
 end
 
 -- Konum: zemin noktası (ayak tabanı) ve yön (hx, hz)

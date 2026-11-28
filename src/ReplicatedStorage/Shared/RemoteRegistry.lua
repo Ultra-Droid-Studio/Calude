@@ -29,7 +29,10 @@ RemoteRegistry.Definitions = {
 		RequestHijack = { Class = "RemoteEvent", Direction = "C2S" },
 		HijackResult = { Class = "RemoteEvent", Direction = "S2C" }, -- (başarılı mı, neden)
 	},
-	NPCRemotes = {},
+	NPCRemotes = {
+		-- Yayayla yapay zekâlı sohbet: { Seed, Gender, Position, Message?, Token? } → { Ok, Text, Token, Name, Job, You, NoChat }
+		Talk = { Class = "RemoteFunction", Direction = "C2S" },
+	},
 	ShopRemotes = {},
 	InventoryRemotes = {},
 	TradeRemotes = {},

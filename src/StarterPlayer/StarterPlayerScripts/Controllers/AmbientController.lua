@@ -40,6 +40,7 @@ local Entrances = require(AmbientShared:WaitForChild("Entrances"))
 local MapDefinitions = require(Shared:WaitForChild("MapDefinitions"))
 local VehicleDefinitions = require(Shared:WaitForChild("VehicleDefinitions"))
 local AmbientConfig = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("AmbientConfig"))
+local ChatConfig = require(ReplicatedStorage.Modules:WaitForChild("NPCChatConfig"))
 local Log = require(Shared.Utilities.Log).new("Ambient")
 local RemoteRegistry = require(Shared.RemoteRegistry)
 
@@ -49,6 +50,7 @@ local PedRenderer = require(AmbientFolder:WaitForChild("PedRenderer"))
 local SignalRenderer = require(AmbientFolder:WaitForChild("SignalRenderer"))
 local DoorRenderer = require(AmbientFolder:WaitForChild("DoorRenderer"))
 local AmbientDebug = require(AmbientFolder:WaitForChild("AmbientDebug"))
+local NPCChat = require(AmbientFolder:WaitForChild("NPCChat"))
 
 local AmbientController = {
 	Name = "AmbientController",
@@ -82,6 +84,12 @@ local function releaseCar(model: Model)
 	detachDriver(model)
 	TrafficRenderer.Release(model)
 end
+
+-- ===== Yayayla sohbet (NPCChat): yakındaki kaldırımdaki yayada "Konuş [E]" → yaya simülasyondan çıkar, durur, oyuncuya
+-- döner; sohbet bitince (panel kapandı, uzaklaşıldı, araca binildi, uzun süre yazılmadı) kaldırıma geri katılıp yürür. =====
+local TALK_SCAN2 = 14 * 14 -- istem bu mesafedeki yayalarda kurulur/açılır (görünme mesafesi PromptDistance)
+local talk: any = nil -- { Model, Pos, HX, HZ, WalkHX, WalkHZ, Seed, Speed, Anim }
+local talkPrompts: { [Model]: ProximityPrompt } = {}
 -- Kaza modelleri: yaya (ragdoll → kalkma → yürümeye devam) ya da araç (fizik → toparlanma → trafiğe dönüş).
 -- Geri dönemeyenler (devrilmiş araç, yol bulamayan yaya) eskisi gibi oyuncu uzaklaşınca havuza döner.
 local wrecks: { any } = {}
@@ -305,6 +313,10 @@ local function gatherObstacles(focus: Vector3)
 			end
 		end
 	end
+	if talk then
+		-- sohbet eden yaya kaldırımda durur: diğer yayalar etrafından geçer
+		table.insert(forPeds, { X = talk.Pos.X, Z = talk.Pos.Z, R = 1.5, Kind = "Player", Speed = 0 })
+	end
 	for _, p in peds.Peds do
 		if p.State == "Geç" or (p.Link and p.Link.Crossing) then
 			local spd = p.CurSpeed or 0
@@ -352,6 +364,13 @@ local function clearAll()
 	if not traffic then
 		return
 	end
+	if talk then
+		local t = talk
+		talk = nil
+		NPCChat.Stop()
+		PedRenderer.Release(t.Model)
+	end
+	talkPrompts = {}
 	for _, v in table.clone(traffic.Vehicles) do
 		traffic:Remove(v, "Kapat")
 	end
@@ -595,13 +614,149 @@ local function updateDrivers()
 		end
 	end
 	local humanoid = controllers.CharacterController:GetHumanoid()
-	local onFoot = humanoid ~= nil and humanoid.SeatPart == nil and humanoid.Health > 0 and not hijacking
+	local onFoot = humanoid ~= nil and humanoid.SeatPart == nil and humanoid.Health > 0 and not hijacking and not talk
 	for v, model in vehicleModels do
 		local prompt = TrafficRenderer.HijackPrompt(model)
 		if prompt then
 			prompt.Enabled = onFoot and drivers[model] ~= nil and (v.V or 0) < 14
 		end
 	end
+end
+
+-- ===== Sohbet =====
+-- Yakındaki uygun yayalarda "Konuş" istemini aç, diğerlerinde kapat (10 Hz). Uygun: kaldırımda (karşıya geçmiyor,
+-- kapıda değil), görünür, kazadan dönmüyor; oyuncu yaya hâlinde, araç çalmıyor, başka sohbette değil.
+local function talkEligible(p): boolean
+	if p.State == "Geç" or p.State == "Kapı" or p.State == "Gir" or p.State == "Çık" then
+		return false
+	end
+	return not (p.Link and p.Link.Crossing) and (p.Fade or 0) < 0.05 and p.Return == nil
+end
+
+local function updateTalkPrompts()
+	local on = {}
+	local root = controllers.CharacterController:GetRootPart()
+	local humanoid = controllers.CharacterController:GetHumanoid()
+	if ChatConfig.Enabled and root and humanoid and humanoid.SeatPart == nil and humanoid.Health > 0 and not hijacking and not talk then
+		local rp = root.Position
+		for p, model in pedModels do
+			local dx, dz = p.X - rp.X, p.Z - rp.Z
+			if dx * dx + dz * dz < TALK_SCAN2 and math.abs(p.Y - rp.Y) < 8 and talkEligible(p) then
+				local prompt = PedRenderer.TalkPrompt(model, ChatConfig)
+				if prompt then
+					on[model] = prompt
+					if not prompt.Enabled then
+						prompt.Enabled = true
+					end
+				end
+			end
+		end
+	end
+	for model, prompt in talkPrompts do
+		if not on[model] then
+			prompt.Enabled = false
+		end
+	end
+	talkPrompts = on
+end
+
+-- Sohbeti bitir: yaya en yakın kaldırım çizgisine geri katılır ve eski yönünde yürümeye devam eder
+local function endTalk(_reason: string)
+	local t = talk
+	if not t then
+		return
+	end
+	talk = nil
+	NPCChat.Stop()
+	local p = peds and peds:Rejoin(t.Pos.X, t.Pos.Z, t.WalkHX, t.WalkHZ, t.Seed, t.Speed, 18)
+	if p then
+		pedModels[p] = t.Model
+		p.Anim = t.Anim or PedAnim.new(t.Seed)
+		p.PX, p.PY, p.PZ, p.PHX, p.PHZ = p.X, p.Y, p.Z, p.HX, p.HZ
+		-- durduğu yerden ve oyuncuya bakan yönden yürüme çizgisine yumuşak geçiş
+		p.Return = { Offset = t.Pos - Vector3.new(p.X, p.Y, p.Z), HX = t.HX, HZ = t.HZ, T = 0, D = 0.8 }
+	else
+		PedRenderer.Release(t.Model) -- yakında kaldırım yok (olmamalı): havuza döner
+	end
+end
+
+local function startTalk(model: Model)
+	if talk or hijacking or not peds or not ChatConfig.Enabled then
+		return
+	end
+	local p = nil
+	for sp, m in pedModels do
+		if m == model then
+			p = sp
+			break
+		end
+	end
+	local root = controllers.CharacterController:GetRootPart()
+	local humanoid = controllers.CharacterController:GetHumanoid()
+	local pedRoot = model.PrimaryPart
+	if not p or not root or not humanoid or not pedRoot or humanoid.SeatPart or humanoid.Health <= 0 or not talkEligible(p) then
+		return
+	end
+	-- simülasyondan çıkar (model bizde kalır; syncModels havuza vermez çünkü eşleme önce silinir)
+	pedModels[p] = nil
+	peds:Remove(p, "Sohbet")
+	local seed = p.Seed or math.random()
+	local here = pedRoot.Position
+	local hx, hz = p.HX or 0, p.HZ or 1
+	talk = {
+		Model = model, Pos = Vector3.new(here.X, p.Y, here.Z), HX = hx, HZ = hz, WalkHX = hx, WalkHZ = hz,
+		Seed = seed, Speed = p.Speed, Anim = p.Anim or PedAnim.new(seed),
+	}
+	for m, prompt in talkPrompts do
+		prompt.Enabled = false
+		talkPrompts[m] = nil
+	end
+	NPCChat.Start({
+		Model = model, Seed = seed, Gender = PedRenderer.Gender(model), Position = talk.Pos,
+		OnClose = function()
+			endTalk("Kapat")
+		end,
+	})
+end
+
+-- Her kare: sohbet eden yaya oyuncuya döner, duruş animasyonu; bitme koşulları
+local TURN_RATE = 5 -- rad/sn
+local function updateTalk(dt: number)
+	local t = talk
+	if not t then
+		return
+	end
+	local root = controllers.CharacterController:GetRootPart()
+	local humanoid = controllers.CharacterController:GetHumanoid()
+	local reason = nil
+	if not NPCChat.IsOpen() then
+		reason = "Kapat"
+	elseif not root or not humanoid or humanoid.Health <= 0 then
+		reason = "Oyuncu"
+	elseif humanoid.SeatPart then
+		reason = "Araç"
+	elseif NPCChat.IdleFor() > ChatConfig.IdleTimeout then
+		reason = "Sessiz"
+	elseif Vector3.new(root.Position.X - t.Pos.X, 0, root.Position.Z - t.Pos.Z).Magnitude > ChatConfig.EndDistance then
+		reason = "Uzak"
+	end
+	if reason then
+		endTalk(reason)
+		return
+	end
+	local rp = (root :: BasePart).Position
+	local tx, tz = rp.X - t.Pos.X, rp.Z - t.Pos.Z
+	local turn = 0
+	if tx * tx + tz * tz > 0.25 then
+		local cur = math.atan2(t.HX, t.HZ)
+		local diff = (math.atan2(tx, tz) - cur + math.pi) % (2 * math.pi) - math.pi
+		local step = math.clamp(diff, -TURN_RATE * dt, TURN_RATE * dt)
+		cur += step
+		t.HX, t.HZ = math.sin(cur), math.cos(cur)
+		turn = step / math.max(dt, 1e-3) -- render'daki -atan2(cross, dot) ile aynı işaret
+	end
+	PedRenderer.Place(t.Model, t.Pos, t.HX, t.HZ)
+	PedRenderer.Pose(t.Model, PedAnim.Step(t.Anim, math.min(dt, 0.1), 0, turn, 0))
 end
 
 local function simStep()
@@ -665,6 +820,7 @@ local function simStep()
 	end
 	DoorRenderer.Update(focus, peds.Time) -- yakındaki kapılar (havuzlu), yaya giriş/çıkışında açılır
 	updateDrivers()
+	updateTalkPrompts()
 	if debugOn and now - lastDebug > AmbientConfig.Debug.RefreshInterval then
 		lastDebug = now
 		AmbientDebug.Update({
@@ -744,6 +900,13 @@ local function render(dt: number, alpha: number)
 			x += back.Offset.X * (1 - e)
 			y += back.Offset.Y * (1 - e)
 			z += back.Offset.Z * (1 - e)
+			if back.HX then
+				-- sohbetten dönüş: oyuncuya bakan yönden yürüme yönüne (açıyla; 180°'de de düzgün)
+				local a0 = math.atan2(back.HX, back.HZ)
+				local d = (math.atan2(hx, hz) - a0 + math.pi) % (2 * math.pi) - math.pi
+				local a = a0 + d * e
+				hx, hz = math.sin(a), math.cos(a)
+			end
 			if e >= 1 then
 				p.Return = nil
 			end
@@ -959,6 +1122,13 @@ local function onHeartbeat(dt: number)
 	if not ok then
 		Log.Error("Kaza güncellemesi hata verdi:", err)
 	end
+	if talk then
+		local okTalk, errTalk = pcall(updateTalk, dt)
+		if not okTalk then
+			Log.Error("Sohbet güncellemesi hata verdi:", errTalk)
+			endTalk("Hata")
+		end
+	end
 end
 
 function AmbientController:Init(allControllers)
@@ -1015,7 +1185,18 @@ function AmbientController:Start()
 		hijackRemote = RemoteRegistry.Get("VehicleRemotes", "RequestHijack") :: RemoteEvent
 		hijackResult = RemoteRegistry.Get("VehicleRemotes", "HijackResult") :: RemoteEvent
 	end)
+	NPCChat.Init()
 	ProximityPromptService.PromptTriggered:Connect(function(prompt)
+		if prompt.Name == "TalkPrompt" then
+			local model = prompt:FindFirstAncestorOfClass("Model")
+			if model then
+				local ok, err = pcall(startTalk, model)
+				if not ok then
+					Log.Warn("Sohbet başlatılamadı:", err)
+				end
+			end
+			return
+		end
 		if prompt.Name ~= "HijackPrompt" then
 			return
 		end
