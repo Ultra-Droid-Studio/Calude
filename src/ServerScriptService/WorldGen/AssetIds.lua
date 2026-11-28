@@ -6,7 +6,7 @@
 -- yüklenmiş olmalı.
 return {
 	StreetLights = 114356071565868, -- @asset StreetLights: assets/streetlights/StreetLights.glb (KMB3D, CC BY 4.0)
-	Cars = 124377195050272, -- @asset Cars: assets/cars/SOLARA_Cars.glb (kullanıcının verdiği 12 low-poly araba)
+	Cars = 0, -- @asset Cars: assets/cars/SOLARA_Cars.glb (12 low-poly araba; Aşama 2 ile değişti → yeniden yüklenecek; eski: 124377195050272)
 	TrafficLights = 112108028010572, -- @asset TrafficLights: assets/trafficlights/SOLARA_TrafficLights.glb (Kenney, CC0)
 	Pedestrians = 135490682162696, -- @asset Pedestrians: assets/pedestrians/SOLARA_Pedestrians.glb (Microsoft Rocketbox, MIT)
 }

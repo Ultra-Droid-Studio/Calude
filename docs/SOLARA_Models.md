@@ -8,7 +8,7 @@ Derleme: `place/SOLARA_Models.rbxlx` (önceki her şey + bu değişiklikler + 4 
 ## Ne geldi
 | | Model (kullanıcının zip'inden) | Oyunda |
 |---|---|---|
-| **Arabalar** | 12 low-poly araba (cosmo-art) → `assets/cars/SOLARA_Cars.glb` | Oyuncunun sürdüğü araçlar **ve** NPC trafiği. Görünüm kaynakla aynı (aynı üçgenler, aynı renkler). Tekerlekler döner; farlar gece, stoplar gece ve frende, geri vites lambası geri giderken, sinyaller sinyalde yanar (araç ışık sistemine bağlı). Trafikte %35 modelin kendi rengi, kalanı aracın renk listesinden; polis (Patrulla) sabit siyah-beyaz, sedan trafiğinin ~%12'si. |
+| **Arabalar** | 12 low-poly araba (cosmo-art) → `assets/cars/SOLARA_Cars.glb` | Oyuncunun sürdüğü araçlar **ve** NPC trafiği. Biçim ve renkler kaynakla aynı; Aşama 2'den beri gövde gölgelendirmesi yumuşatılmış, lastikler 20 köşeli (`docs/SOLARA_CarPack.md`). Tekerlekler döner; farlar gece, stoplar gece ve frende, geri vites lambası geri giderken, sinyaller sinyalde yanar (araç ışık sistemine bağlı). Trafikte %35 modelin kendi rengi, kalanı aracın renk listesinden; polis (Patrulla) sabit siyah-beyaz, sedan trafiğinin ~%12'si. |
 | **Trafik ışıkları** | Kenney trafik ışıkları A / B / C → `assets/trafficlights/SOLARA_TrafficLights.glb` | Her ışıklı kavşak kolunda: çok şeritli yolda yola uzanan kollu **C**, diğerlerinde **A** ya da **B** (B'nin sokak lambası gece yanar). Kırmızı / sarı / yeşil cam, NPC'lerin uyduğu sinyal durumuyla birlikte yanar (diğer camlar kendi koyu renginde). |
 | **Sokak lambaları** | KMB3D sokak lambaları (önceden verdiğin) → `assets/streetlights/StreetLights.glb` | Bölgeye göre 6 tip, gece yanar (WeatherService). Değişmedi; artık aynı betikle yüklenir. |
 | **Yayalar** | 10 Rocketbox insan (4 kadın, 6 erkek; `Business_Male_04 (1)` aynı dosya, atlandı) → `assets/pedestrians/SOLARA_Pedestrians.glb` | Yüz, saç, kıyafet dokuları modelin kendisi. Yürüme, duruş, dönüş, kapı itme: oyunun ters kinematikli yürüme sistemi (PedAnim) kemiklere uygulanır — basan ayak kaymaz, kollar karşı bacakla sallanır, kalça iner kalkar. Boy 5.4–5.9 stud. |
@@ -50,7 +50,8 @@ renkler ve polis; kavşakta ışıkların sırayla yanması; yayaların yürüme
 ## Değişen / yeni dosyalar
 | Dosya | Ne yapar |
 |---|---|
-| `tools/cosmo_cars_convert.py` | 12 FBX + palet → `SOLARA_Cars.glb`, `cars.json`, önizleme (renk grupları, roller, tekerlek adları, ön/arka) |
+| `tools/cosmo_cars_convert.py` | 12 FBX + palet → `SOLARA_Cars_base.glb` (kaynak görünüm), `cars.json`, önizleme (renk grupları, roller, tekerlek adları, ön/arka) |
+| `tools/car_refine.py` | `SOLARA_Cars_base.glb` → `SOLARA_Cars.glb`: gövde gölgelendirmesi, ters yüz düzeltme, 20 köşeli lastik, jant çerçevesi; `cars.json` güncellenir, `docs/cars_refine_preview.png` (test: `tools/test_car_refine.py`) |
 | `tools/gltf_decode.py` | meshopt + WebP sıkıştırmalı .glb okuyucu (Kenney, Rocketbox) |
 | `tools/trafficlights_convert.py` | Kenney A/B/C → `SOLARA_TrafficLights.glb`, `TrafficLightData.lua`, önizleme |
 | `tools/peds_convert.py` | Rocketbox → `SOLARA_Pedestrians.glb` (deri/skinned, 20 kemik, doku atlası), `PedModelData.lua`, önizleme |

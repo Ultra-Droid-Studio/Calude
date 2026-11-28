@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
 cosmo_cars_convert.py — turns the 12 low-poly car FBX files the user supplied (cosmo-art "Low Poly Cars",
-itch.io; one palette texture "texture-palette.png") into ONE Roblox-ready file: assets/cars/SOLARA_Cars.glb.
+itch.io; one palette texture "texture-palette.png") into ONE file: assets/cars/SOLARA_Cars_base.glb
+(the original look; tools/car_refine.py then writes the game file assets/cars/SOLARA_Cars.glb).
 
 The look stays exactly the source's: same triangles, same shading normals, and every face keeps the colour its
 UV points at in the palette texture. Because the palette is a grid of flat colours, faces are grouped by colour into
@@ -43,7 +44,7 @@ import fbx_reader  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT_DIR = os.path.join(ROOT, "assets", "cars")
-OUT_GLB = os.path.join(OUT_DIR, "SOLARA_Cars.glb")
+OUT_GLB = os.path.join(OUT_DIR, "SOLARA_Cars_base.glb")  # tools/car_refine.py -> SOLARA_Cars.glb
 OUT_JSON = os.path.join(OUT_DIR, "cars.json")
 OUT_PREVIEW = os.path.join(ROOT, "docs", "cars_preview.png")
 CM = 0.01  # FBX units (cm) -> metres

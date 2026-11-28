@@ -3,7 +3,7 @@
 | İçerik | Yazar | Lisans | Kaynak | Değişiklik | Oyunda |
 |---|---|---|---|---|---|
 | Sokak lambaları ("Various Low-Poly Street Lights") | KMB3D | CC BY 4.0 | https://sketchfab.com/3d-models/various-low-poly-street-lights-1173b0c4d9b0400bbeaafbee0e94ca59 | 8 lambaya ayrıldı, ortalandı, kolu yola bakacak şekilde döndürüldü, malzemeler sadeleştirildi (`tools/streetlights_convert.py`) | `assets/streetlights/StreetLights.glb` |
-| 12 araba ("Low Poly Cars") | cosmo-art | **doğrulanamadı** (sayfa bu makineden açılmadı; kullanıcı paketin şartlarını kontrol etmeli) | https://cosmo-art.itch.io/low-poly-cars | Palet dokusu parça renklerine çevrildi, roller (boya, cam, lambalar, tekerlekler), yeni adlar (`tools/cosmo_cars_convert.py`) | `assets/cars/SOLARA_Cars.glb` |
+| 12 araba ("Low Poly Cars") | cosmo-art | **doğrulanamadı** (sayfa bu makineden açılmadı; kullanıcı paketin şartlarını kontrol etmeli) | https://cosmo-art.itch.io/low-poly-cars | Palet dokusu parça renklerine çevrildi, roller (boya, cam, lambalar, tekerlekler), yeni adlar (`tools/cosmo_cars_convert.py`); yumuşatılmış gövde gölgelendirmesi, 20 köşeli lastikler, jant çerçevesi (`tools/car_refine.py`) | `assets/cars/SOLARA_Cars.glb` |
 | Trafik ışıkları ("City Builder Bits") | Kenney | CC0 1.0 | https://kenney.nl | Açıldı, renkler sabitlendi, camlar ayrı parça (`tools/trafficlights_convert.py`) | `assets/trafficlights/SOLARA_TrafficLights.glb` |
 | 10 yaya (Business_Female_01–04, Business_Male_01–06) | Microsoft (Rocketbox) | MIT | https://github.com/microsoft/Microsoft-Rocketbox | İskelet 80 → 20 kemik, dokular tek atlas, eksenler (`tools/peds_convert.py`) | `assets/pedestrians/SOLARA_Pedestrians.glb` |
 

@@ -1,7 +1,7 @@
 {
  "Bastion": {
   "Source": "armor.fbx",
-  "Triangles": 2450,
+  "Triangles": 3090,
   "Parts": 19,
   "PaintHex": "424242",
   "LengthM": 5.149,
@@ -9,7 +9,7 @@
   "HeightM": 1.965,
   "WheelbaseM": 3.18,
   "TrackM": 1.788,
-  "WheelRadiusM": 0.414,
+  "WheelRadiusM": 0.436,
   "RoleTriangles": {
    "Detail": 370,
    "Glass": 24,
@@ -19,14 +19,14 @@
    "Paint": 664,
    "ReverseLight": 52,
    "TailLight": 52,
-   "Wheel_FL_Rim": 120,
-   "Wheel_FL_Tire": 200,
-   "Wheel_FR_Rim": 120,
-   "Wheel_FR_Tire": 200,
-   "Wheel_RL_Rim": 120,
-   "Wheel_RL_Tire": 200,
-   "Wheel_RR_Rim": 120,
-   "Wheel_RR_Tire": 200
+   "Wheel_FL_Rim": 160,
+   "Wheel_FL_Tire": 320,
+   "Wheel_FR_Rim": 160,
+   "Wheel_FR_Tire": 320,
+   "Wheel_RL_Rim": 160,
+   "Wheel_RL_Tire": 320,
+   "Wheel_RR_Rim": 160,
+   "Wheel_RR_Tire": 320
   },
   "PartNames": [
    "Bastion_Detail_2e2e2e",
@@ -48,11 +48,20 @@
    "Bastion_Wheel_RL_Tire_2e2e2e",
    "Bastion_Wheel_RR_Rim_6e6e6e",
    "Bastion_Wheel_RR_Tire_2e2e2e"
-  ]
+  ],
+  "BaseTriangles": 2450,
+  "Refine": {
+   "Crease": 50.0,
+   "TireSegments": 20,
+   "SmoothedCorners": 317,
+   "KeptOriginalCorners": 598,
+   "FlippedFaces": 60,
+   "Liners": []
+  }
  },
  "Solano": {
   "Source": "coupe.fbx",
-  "Triangles": 2290,
+  "Triangles": 2930,
   "Parts": 16,
   "PaintHex": "424242",
   "LengthM": 5.137,
@@ -60,21 +69,21 @@
   "HeightM": 1.743,
   "WheelbaseM": 3.121,
   "TrackM": 1.753,
-  "WheelRadiusM": 0.404,
+  "WheelRadiusM": 0.425,
   "RoleTriangles": {
    "Detail": 600,
    "Glass": 32,
    "Headlight": 4,
    "Paint": 306,
    "TailLight": 68,
-   "Wheel_FL_Rim": 120,
-   "Wheel_FL_Tire": 200,
-   "Wheel_FR_Rim": 120,
-   "Wheel_FR_Tire": 200,
-   "Wheel_RL_Rim": 120,
-   "Wheel_RL_Tire": 200,
-   "Wheel_RR_Rim": 120,
-   "Wheel_RR_Tire": 200
+   "Wheel_FL_Rim": 160,
+   "Wheel_FL_Tire": 320,
+   "Wheel_FR_Rim": 160,
+   "Wheel_FR_Tire": 320,
+   "Wheel_RL_Rim": 160,
+   "Wheel_RL_Tire": 320,
+   "Wheel_RR_Rim": 160,
+   "Wheel_RR_Tire": 320
   },
   "PartNames": [
    "Solano_Detail_2e2e2e",
@@ -93,11 +102,20 @@
    "Solano_Wheel_RL_Tire_2e2e2e",
    "Solano_Wheel_RR_Rim_6e6e6e",
    "Solano_Wheel_RR_Tire_2e2e2e"
-  ]
+  ],
+  "BaseTriangles": 2290,
+  "Refine": {
+   "Crease": 50.0,
+   "TireSegments": 20,
+   "SmoothedCorners": 178,
+   "KeptOriginalCorners": 581,
+   "FlippedFaces": 6,
+   "Liners": []
+  }
  },
  "Vortex": {
   "Source": "fenyr.fbx",
-  "Triangles": 2188,
+  "Triangles": 2828,
   "Parts": 18,
   "PaintHex": "2e2efe",
   "LengthM": 4.877,
@@ -105,21 +123,21 @@
   "HeightM": 1.3,
   "WheelbaseM": 2.898,
   "TrackM": 1.791,
-  "WheelRadiusM": 0.382,
+  "WheelRadiusM": 0.402,
   "RoleTriangles": {
    "Detail": 566,
    "Glass": 22,
    "Headlight": 6,
    "Paint": 258,
    "TailLight": 56,
-   "Wheel_FL_Rim": 120,
-   "Wheel_FL_Tire": 200,
-   "Wheel_FR_Rim": 120,
-   "Wheel_FR_Tire": 200,
-   "Wheel_RL_Rim": 120,
-   "Wheel_RL_Tire": 200,
-   "Wheel_RR_Rim": 120,
-   "Wheel_RR_Tire": 200
+   "Wheel_FL_Rim": 160,
+   "Wheel_FL_Tire": 320,
+   "Wheel_FR_Rim": 160,
+   "Wheel_FR_Tire": 320,
+   "Wheel_RL_Rim": 160,
+   "Wheel_RL_Tire": 320,
+   "Wheel_RR_Rim": 160,
+   "Wheel_RR_Tire": 320
   },
   "PartNames": [
    "Vortex_Detail_2e2e2e",
@@ -140,11 +158,20 @@
    "Vortex_Wheel_RL_Tire_2e2e2e",
    "Vortex_Wheel_RR_Rim_6e6e6e",
    "Vortex_Wheel_RR_Tire_2e2e2e"
-  ]
+  ],
+  "BaseTriangles": 2188,
+  "Refine": {
+   "Crease": 50.0,
+   "TireSegments": 20,
+   "SmoothedCorners": 122,
+   "KeptOriginalCorners": 540,
+   "FlippedFaces": 8,
+   "Liners": []
+  }
  },
  "Strada": {
   "Source": "ghini.fbx",
-  "Triangles": 2226,
+  "Triangles": 2866,
   "Parts": 17,
   "PaintHex": "585858",
   "LengthM": 4.79,
@@ -152,21 +179,21 @@
   "HeightM": 1.38,
   "WheelbaseM": 2.875,
   "TrackM": 1.592,
-  "WheelRadiusM": 0.388,
+  "WheelRadiusM": 0.408,
   "RoleTriangles": {
    "Detail": 694,
    "Glass": 16,
    "Headlight": 2,
    "Paint": 178,
    "TailLight": 56,
-   "Wheel_FL_Rim": 120,
-   "Wheel_FL_Tire": 200,
-   "Wheel_FR_Rim": 120,
-   "Wheel_FR_Tire": 200,
-   "Wheel_RL_Rim": 120,
-   "Wheel_RL_Tire": 200,
-   "Wheel_RR_Rim": 120,
-   "Wheel_RR_Tire": 200
+   "Wheel_FL_Rim": 160,
+   "Wheel_FL_Tire": 320,
+   "Wheel_FR_Rim": 160,
+   "Wheel_FR_Tire": 320,
+   "Wheel_RL_Rim": 160,
+   "Wheel_RL_Tire": 320,
+   "Wheel_RR_Rim": 160,
+   "Wheel_RR_Tire": 320
   },
   "PartNames": [
    "Strada_Detail_2e2e2e",
@@ -186,11 +213,20 @@
    "Strada_Wheel_RL_Tire_2e2e2e",
    "Strada_Wheel_RR_Rim_6e6e6e",
    "Strada_Wheel_RR_Tire_2e2e2e"
-  ]
+  ],
+  "BaseTriangles": 2226,
+  "Refine": {
+   "Crease": 50.0,
+   "TireSegments": 20,
+   "SmoothedCorners": 44,
+   "KeptOriginalCorners": 390,
+   "FlippedFaces": 4,
+   "Liners": []
+  }
  },
  "Rossa": {
   "Source": "italia.fbx",
-  "Triangles": 2258,
+  "Triangles": 2898,
   "Parts": 17,
   "PaintHex": "ff0000",
   "LengthM": 5.236,
@@ -198,21 +234,21 @@
   "HeightM": 1.345,
   "WheelbaseM": 3.067,
   "TrackM": 1.903,
-  "WheelRadiusM": 0.384,
+  "WheelRadiusM": 0.404,
   "RoleTriangles": {
    "Detail": 598,
    "Glass": 22,
    "Headlight": 10,
    "Paint": 282,
    "TailLight": 66,
-   "Wheel_FL_Rim": 120,
-   "Wheel_FL_Tire": 200,
-   "Wheel_FR_Rim": 120,
-   "Wheel_FR_Tire": 200,
-   "Wheel_RL_Rim": 120,
-   "Wheel_RL_Tire": 200,
-   "Wheel_RR_Rim": 120,
-   "Wheel_RR_Tire": 200
+   "Wheel_FL_Rim": 160,
+   "Wheel_FL_Tire": 320,
+   "Wheel_FR_Rim": 160,
+   "Wheel_FR_Tire": 320,
+   "Wheel_RL_Rim": 160,
+   "Wheel_RL_Tire": 320,
+   "Wheel_RR_Rim": 160,
+   "Wheel_RR_Tire": 320
   },
   "PartNames": [
    "Rossa_Detail_2e2e2e",
@@ -232,11 +268,20 @@
    "Rossa_Wheel_RL_Tire_2e2e2e",
    "Rossa_Wheel_RR_Rim_6e6e6e",
    "Rossa_Wheel_RR_Tire_2e2e2e"
-  ]
+  ],
+  "BaseTriangles": 2258,
+  "Refine": {
+   "Crease": 50.0,
+   "TireSegments": 20,
+   "SmoothedCorners": 104,
+   "KeptOriginalCorners": 658,
+   "FlippedFaces": 14,
+   "Liners": []
+  }
  },
  "Cresta": {
   "Source": "jeep.fbx",
-  "Triangles": 2996,
+  "Triangles": 3636,
   "Parts": 20,
   "PaintHex": "fe9a2e",
   "LengthM": 4.454,
@@ -244,7 +289,7 @@
   "HeightM": 2.035,
   "WheelbaseM": 2.683,
   "TrackM": 1.97,
-  "WheelRadiusM": 0.475,
+  "WheelRadiusM": 0.499,
   "RoleTriangles": {
    "Detail": 1212,
    "Glass": 42,
@@ -252,14 +297,14 @@
    "Paint": 254,
    "ReverseLight": 20,
    "TailLight": 20,
-   "Wheel_FL_Rim": 120,
-   "Wheel_FL_Tire": 200,
-   "Wheel_FR_Rim": 120,
-   "Wheel_FR_Tire": 200,
-   "Wheel_RL_Rim": 120,
-   "Wheel_RL_Tire": 200,
-   "Wheel_RR_Rim": 120,
-   "Wheel_RR_Tire": 200
+   "Wheel_FL_Rim": 160,
+   "Wheel_FL_Tire": 320,
+   "Wheel_FR_Rim": 160,
+   "Wheel_FR_Tire": 320,
+   "Wheel_RL_Rim": 160,
+   "Wheel_RL_Tire": 320,
+   "Wheel_RR_Rim": 160,
+   "Wheel_RR_Tire": 320
   },
   "PartNames": [
    "Cresta_Detail_2e2e2e",
@@ -282,11 +327,20 @@
    "Cresta_Wheel_RL_Tire_2e2e2e",
    "Cresta_Wheel_RR_Rim_6e6e6e",
    "Cresta_Wheel_RR_Tire_2e2e2e"
-  ]
+  ],
+  "BaseTriangles": 2996,
+  "Refine": {
+   "Crease": 50.0,
+   "TireSegments": 20,
+   "SmoothedCorners": 84,
+   "KeptOriginalCorners": 398,
+   "FlippedFaces": 40,
+   "Liners": []
+  }
  },
  "Brava": {
   "Source": "kamaro.fbx",
-  "Triangles": 2444,
+  "Triangles": 2828,
   "Parts": 19,
   "PaintHex": "ffbf00",
   "LengthM": 4.869,
@@ -294,21 +348,21 @@
   "HeightM": 1.36,
   "WheelbaseM": 2.907,
   "TrackM": 1.567,
-  "WheelRadiusM": 0.33,
+  "WheelRadiusM": 0.342,
   "RoleTriangles": {
    "Detail": 790,
    "Glass": 16,
    "Headlight": 76,
    "Paint": 324,
    "TailLight": 150,
-   "Wheel_FL_Rim": 104,
-   "Wheel_FL_Tire": 168,
-   "Wheel_FR_Rim": 104,
-   "Wheel_FR_Tire": 168,
-   "Wheel_RL_Rim": 104,
-   "Wheel_RL_Tire": 168,
-   "Wheel_RR_Rim": 104,
-   "Wheel_RR_Tire": 168
+   "Wheel_FL_Rim": 144,
+   "Wheel_FL_Tire": 224,
+   "Wheel_FR_Rim": 144,
+   "Wheel_FR_Tire": 224,
+   "Wheel_RL_Rim": 144,
+   "Wheel_RL_Tire": 224,
+   "Wheel_RR_Rim": 144,
+   "Wheel_RR_Tire": 224
   },
   "PartNames": [
    "Brava_Detail_2e2e2e",
@@ -330,11 +384,20 @@
    "Brava_Wheel_RL_Tire_424242",
    "Brava_Wheel_RR_Rim_f2f2f2",
    "Brava_Wheel_RR_Tire_424242"
-  ]
+  ],
+  "BaseTriangles": 2444,
+  "Refine": {
+   "Crease": 50.0,
+   "TireSegments": 20,
+   "SmoothedCorners": 224,
+   "KeptOriginalCorners": 622,
+   "FlippedFaces": 0,
+   "Liners": []
+  }
  },
  "Furia": {
   "Source": "lamb.fbx",
-  "Triangles": 1924,
+  "Triangles": 2404,
   "Parts": 23,
   "PaintHex": "df0101",
   "LengthM": 4.619,
@@ -342,20 +405,20 @@
   "HeightM": 1.328,
   "WheelbaseM": 2.423,
   "TrackM": 1.76,
-  "WheelRadiusM": 0.369,
+  "WheelRadiusM": 0.388,
   "RoleTriangles": {
    "Detail": 574,
    "Glass": 10,
    "Headlight": 2,
    "Paint": 314,
-   "Wheel_FL_Rim": 80,
-   "Wheel_FL_Tire": 176,
-   "Wheel_FR_Rim": 80,
-   "Wheel_FR_Tire": 176,
-   "Wheel_RL_Rim": 80,
-   "Wheel_RL_Tire": 176,
-   "Wheel_RR_Rim": 80,
-   "Wheel_RR_Tire": 176
+   "Wheel_FL_Rim": 120,
+   "Wheel_FL_Tire": 256,
+   "Wheel_FR_Rim": 120,
+   "Wheel_FR_Tire": 256,
+   "Wheel_RL_Rim": 120,
+   "Wheel_RL_Tire": 256,
+   "Wheel_RR_Rim": 120,
+   "Wheel_RR_Tire": 256
   },
   "PartNames": [
    "Furia_Detail_1c1c1c",
@@ -381,11 +444,20 @@
    "Furia_Wheel_RR_Rim_424242",
    "Furia_Wheel_RR_Rim_6e6e6e",
    "Furia_Wheel_RR_Tire_2e2e2e"
-  ]
+  ],
+  "BaseTriangles": 1924,
+  "Refine": {
+   "Crease": 50.0,
+   "TireSegments": 20,
+   "SmoothedCorners": 118,
+   "KeptOriginalCorners": 568,
+   "FlippedFaces": 0,
+   "Liners": []
+  }
  },
  "Marlin": {
   "Source": "mobil.fbx",
-  "Triangles": 2440,
+  "Triangles": 3080,
   "Parts": 18,
   "PaintHex": "2e64fe",
   "LengthM": 5.343,
@@ -393,21 +465,21 @@
   "HeightM": 1.506,
   "WheelbaseM": 3.221,
   "TrackM": 1.623,
-  "WheelRadiusM": 0.368,
+  "WheelRadiusM": 0.387,
   "RoleTriangles": {
    "Detail": 812,
    "Glass": 26,
    "Headlight": 88,
    "Paint": 150,
    "TailLight": 84,
-   "Wheel_FL_Rim": 120,
-   "Wheel_FL_Tire": 200,
-   "Wheel_FR_Rim": 120,
-   "Wheel_FR_Tire": 200,
-   "Wheel_RL_Rim": 120,
-   "Wheel_RL_Tire": 200,
-   "Wheel_RR_Rim": 120,
-   "Wheel_RR_Tire": 200
+   "Wheel_FL_Rim": 160,
+   "Wheel_FL_Tire": 320,
+   "Wheel_FR_Rim": 160,
+   "Wheel_FR_Tire": 320,
+   "Wheel_RL_Rim": 160,
+   "Wheel_RL_Tire": 320,
+   "Wheel_RR_Rim": 160,
+   "Wheel_RR_Tire": 320
   },
   "PartNames": [
    "Marlin_Detail_2e2e2e",
@@ -428,11 +500,20 @@
    "Marlin_Wheel_RL_Tire_2e2e2e",
    "Marlin_Wheel_RR_Rim_6e6e6e",
    "Marlin_Wheel_RR_Tire_2e2e2e"
-  ]
+  ],
+  "BaseTriangles": 2440,
+  "Refine": {
+   "Crease": 50.0,
+   "TireSegments": 20,
+   "SmoothedCorners": 38,
+   "KeptOriginalCorners": 318,
+   "FlippedFaces": 0,
+   "Liners": []
+  }
  },
  "Patrulla": {
   "Source": "police.fbx",
-  "Triangles": 2382,
+  "Triangles": 3022,
   "Parts": 23,
   "PaintHex": "2e2e2e",
   "LengthM": 5.722,
@@ -440,7 +521,7 @@
   "HeightM": 1.671,
   "WheelbaseM": 3.14,
   "TrackM": 1.554,
-  "WheelRadiusM": 0.358,
+  "WheelRadiusM": 0.377,
   "RoleTriangles": {
    "Detail": 528,
    "Glass": 36,
@@ -451,14 +532,14 @@
    "SirenBlue": 40,
    "SirenRed": 40,
    "TailLight": 56,
-   "Wheel_FL_Rim": 120,
-   "Wheel_FL_Tire": 200,
-   "Wheel_FR_Rim": 120,
-   "Wheel_FR_Tire": 200,
-   "Wheel_RL_Rim": 120,
-   "Wheel_RL_Tire": 200,
-   "Wheel_RR_Rim": 120,
-   "Wheel_RR_Tire": 200
+   "Wheel_FL_Rim": 160,
+   "Wheel_FL_Tire": 320,
+   "Wheel_FR_Rim": 160,
+   "Wheel_FR_Tire": 320,
+   "Wheel_RL_Rim": 160,
+   "Wheel_RL_Tire": 320,
+   "Wheel_RR_Rim": 160,
+   "Wheel_RR_Tire": 320
   },
   "PartNames": [
    "Patrulla_Detail_424242",
@@ -484,11 +565,20 @@
    "Patrulla_Wheel_RL_Tire_2e2e2e",
    "Patrulla_Wheel_RR_Rim_6e6e6e",
    "Patrulla_Wheel_RR_Tire_2e2e2e"
-  ]
+  ],
+  "BaseTriangles": 2382,
+  "Refine": {
+   "Crease": 50.0,
+   "TireSegments": 20,
+   "SmoothedCorners": 146,
+   "KeptOriginalCorners": 190,
+   "FlippedFaces": 0,
+   "Liners": []
+  }
  },
  "Chispa": {
   "Source": "rally.fbx",
-  "Triangles": 2197,
+  "Triangles": 2837,
   "Parts": 18,
   "PaintHex": "fe642e",
   "LengthM": 4.017,
@@ -496,21 +586,21 @@
   "HeightM": 1.622,
   "WheelbaseM": 2.559,
   "TrackM": 1.549,
-  "WheelRadiusM": 0.306,
+  "WheelRadiusM": 0.322,
   "RoleTriangles": {
    "Detail": 481,
    "Glass": 32,
    "Headlight": 8,
    "Paint": 384,
    "TailLight": 20,
-   "Wheel_FL_Rim": 116,
-   "Wheel_FL_Tire": 200,
-   "Wheel_FR_Rim": 116,
-   "Wheel_FR_Tire": 200,
-   "Wheel_RL_Rim": 120,
-   "Wheel_RL_Tire": 200,
-   "Wheel_RR_Rim": 120,
-   "Wheel_RR_Tire": 200
+   "Wheel_FL_Rim": 156,
+   "Wheel_FL_Tire": 320,
+   "Wheel_FR_Rim": 156,
+   "Wheel_FR_Tire": 320,
+   "Wheel_RL_Rim": 160,
+   "Wheel_RL_Tire": 320,
+   "Wheel_RR_Rim": 160,
+   "Wheel_RR_Tire": 320
   },
   "PartNames": [
    "Chispa_Detail_2e2e2e",
@@ -531,11 +621,20 @@
    "Chispa_Wheel_RL_Tire_2e2e2e",
    "Chispa_Wheel_RR_Rim_6e6e6e",
    "Chispa_Wheel_RR_Tire_2e2e2e"
-  ]
+  ],
+  "BaseTriangles": 2197,
+  "Refine": {
+   "Crease": 50.0,
+   "TireSegments": 20,
+   "SmoothedCorners": 144,
+   "KeptOriginalCorners": 812,
+   "FlippedFaces": 34,
+   "Liners": []
+  }
  },
  "Mula": {
   "Source": "van.fbx",
-  "Triangles": 2110,
+  "Triangles": 2750,
   "Parts": 17,
   "PaintHex": "8aa16d",
   "LengthM": 4.984,
@@ -543,21 +642,21 @@
   "HeightM": 1.961,
   "WheelbaseM": 3.026,
   "TrackM": 1.818,
-  "WheelRadiusM": 0.387,
+  "WheelRadiusM": 0.407,
   "RoleTriangles": {
    "Detail": 356,
    "Glass": 16,
    "Headlight": 4,
    "Paint": 382,
    "TailLight": 72,
-   "Wheel_FL_Rim": 120,
-   "Wheel_FL_Tire": 200,
-   "Wheel_FR_Rim": 120,
-   "Wheel_FR_Tire": 200,
-   "Wheel_RL_Rim": 120,
-   "Wheel_RL_Tire": 200,
-   "Wheel_RR_Rim": 120,
-   "Wheel_RR_Tire": 200
+   "Wheel_FL_Rim": 160,
+   "Wheel_FL_Tire": 320,
+   "Wheel_FR_Rim": 160,
+   "Wheel_FR_Tire": 320,
+   "Wheel_RL_Rim": 160,
+   "Wheel_RL_Tire": 320,
+   "Wheel_RR_Rim": 160,
+   "Wheel_RR_Tire": 320
   },
   "PartNames": [
    "Mula_Detail_2e2e2e",
@@ -577,6 +676,15 @@
    "Mula_Wheel_RL_Tire_2e2e2e",
    "Mula_Wheel_RR_Rim_6e6e6e",
    "Mula_Wheel_RR_Tire_2e2e2e"
-  ]
+  ],
+  "BaseTriangles": 2110,
+  "Refine": {
+   "Crease": 50.0,
+   "TireSegments": 20,
+   "SmoothedCorners": 228,
+   "KeptOriginalCorners": 768,
+   "FlippedFaces": 0,
+   "Liners": []
+  }
  }
 }

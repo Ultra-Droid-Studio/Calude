@@ -1,8 +1,78 @@
-# SOLARA — 12 araba: inceleme ve envanter (Aşama 1)
+# SOLARA — 12 araba paketi: gerçekçileştirme ve araç içi sistemler
+
+| Aşama | Durum |
+|---|---|
+| 1 — İnceleme ve envanter | bitti (aşağıda) |
+| 2 — Gövde yumuşatma, lastik/jant | **kod hazır, çevrimdışı testler PASS; oyunda test EDİLMEDİ** (arabaların yeniden yüklenmesi gerekiyor) |
+| 3–8 | başlamadı |
+
+## Aşama 2 — Gövde ve tekerlekler
+
+Araç: `tools/car_refine.py`. Girdi `assets/cars/SOLARA_Cars_base.glb`: modelin orijinal hâli, aynen saklanır, geri dönüş için.
+Çıktı `assets/cars/SOLARA_Cars.glb` (oyunun yüklediği dosya) ve güncel `cars.json`.
+Önce/sonra görseli: `docs/cars_refine_preview.png`. Yumuşak gölgelendirmeyle çizildi; arkası dönük yüzler Roblox'taki gibi çizilmez.
+
+**Ne değişti**
+* **Gövde gölgelendirmesi (boya parçaları):**
+  * Köşe noktalarının **şekli aynı**: hiçbir nokta kıpırdamadı. Bu yüzden parçalar birbirine giremez ve aralarında boşluk açılamaz.
+  * Değişen yüzey normalleri. Modelcinin düz bıraktığı yüzeyler, 50°'den az açıyla birleştikleri komşularıyla tek yüzey gibi yumuşak gölgelenir.
+  * Daha keskin kenarlar keskin kalır: kutu tasarım (Bastion), cam çerçeveleri, tasarım çizgileri.
+  * Modelcinin zaten yumuşattığı yerler **aynen** korundu. Yeni normal komşu yumuşak gruba yakınsa ona katılır, böylece yeni dikiş çizgisi oluşmaz.
+  * 12 arabada 1010 köşe daha yumuşak gölgeleniyor (6473 → 7483). Kaporta geçişleri, tavan ile yan geçişi (özellikle Mula) ve çamurluk kıvrımları bu sayede yumuşadı.
+* **Ters yüzler düzeltildi:** 166 yüzün sırası ters çevrilmişti. Roblox bu yüzleri dışarıdan çizmiyordu, küçük delikler gibi görünüyorlardı. Normalleri doğruydu, sadece üçgen sırası ters çevrildi.
+  * Bastion: 60 (tavan rafı çıtalarının yanları)
+  * Cresta: 40
+  * Chispa: 34, jantlar dahil
+  * Rossa: 14
+  * Vortex: 8
+  * Solano: 6 (çamurluk kenarları)
+  * Strada: 4
+* **Lastikler:**
+  * 10 köşeden (Brava 12) **20 köşeye** çıktı. Her arabanın kendi lastik kesiti kullanıldı: aynı yarıçap, genişlik, renk ve teker merkezi.
+  * Omuz yumuşak gölgeleniyor. Jant kollarının arasındaki koyu girintiler orijinal.
+  * Lastiğin yüksekliği artık tam 2 × yarıçap. Eskiden çokgen olduğu için %5 eksik ölçülüyordu; araba yere 0.02 m daha doğru oturur.
+* **Jantlar:** orijinal jant aynen duruyor. Dış yüzüne aynı renkte ince, yuvarlak bir çerçeve eklendi; 10 köşeli dış hattı örtüyor ve lastikle arasındaki çizgiyi kapatıyor.
+* **Çamurluk içi:** 12 arabanın hepsinde lastiğin üstünde zaten tekerlek yuvası yüzeyi var. Ek astar gerekmedi; araç, yuva olmayan bir model gelirse astar ekler.
+
+**Ne değişmedi (bayt bayt aynı):** far, stop, geri vites, sinyal ve tepe lambaları, camlar ve bütün Detail parçaları (egzozlar, ızgaralar, plakalar, ayna kolları, spoyler ayakları, siyah tamponlar). Parça adları, renkler ve teker merkezleri de aynı.
+* Siyah plastik tamponlar Detail parçalarında olduğu için yumuşatılmadı: egzozlar da bu parçalarda.
+* Detail parçalarında da 42 ters yüz var. Koruma kuralı gereği dokunmadım; istersen düzeltirim.
+* Cresta'nın stepnesi (Detail) 10 köşeli kaldı.
+
+**Bilerek yapılmayanlar**
+* Siluet ve köşe noktaları değişmedi. Bölme (subdivision) ya da pah kırma, gövdeyle kaynaşık lambaların, ızgaraların ve aynaların çevresinde boşluk ya da iç içe geçme yapardı. Bu, görev kuralına aykırı.
+* Low-poly tarz modelin karakteri; yüksek poligon yeniden modelleme yapılmadı.
+
+**Maliyet**
+* Araba başına +640 üçgen (Brava +384, Furia +480). Hepsi tekerleklerden; gövdeye üçgen eklenmedi.
+* 2450 üçgenlik araba 3090 oldu. En büyüğü Cresta: 3636.
+* Parça sayısı aynı (yeni parça yok). Mobilde en fazla 34 trafik aracı ile yaklaşık +22 bin üçgen.
+
+**Testler** (`tools/test_car_refine.py`, 10 kontrol; hepsi PASS):
+1. Lambalar, camlar ve Detail parçaları aynı.
+2. Gövde noktaları aynı; yeni normaller doğru yönde ve sınır içinde; modelcinin yumuşattığı köşeler aynı.
+3. 55°'den keskin kenarlarda yeni yumuşatma yok.
+4. Her arabada yumuşak köşe sayısı arttı ya da aynı kaldı.
+5. Lastikler aynı yarıçap, genişlik ve merkezde, 20 köşeli, girinti orijinal.
+6. Jant ile lastik arasında ve yanakta delik yok: tekerlek başına 648 ışın.
+7. Üçgen sırası normallerle uyumlu.
+8. Üçgen bütçesi içinde.
+9. `cars.json` dosyayla uyumlu.
+10. Ters yüzler düzeldi.
+
+Eski testler de yeniden PASS:
+* `test_cars`: oyun kodunun teker kalibrasyonu, ölçüler, roller, renkler, ışık adları, dönen tekerler.
+* `test_hijack`: sürücü koltuğu.
+
+**Yükleme:** arabalar değiştiği için oyun dosyasında arabaların numarası **0** yapıldı. `solara_models.sh` sadece arabaları yükler; diğer üç modelin numaraları aynen kalır. Eski numara: 124377195050272.
+
+---
+
+## Aşama 1 — İnceleme ve envanter
 
 Tarih: 28.11.2026. Bu aşamada **oyunda hiçbir şey değişmedi**: sadece modeller ve sürüş kodu incelendi.
 
-Kaynak: `assets/cars/SOLARA_Cars.glb` (git'te; geri dönüş her zaman mümkün) ve `assets/cars/cars.json`.
+Kaynak: `assets/cars/SOLARA_Cars.glb` (Aşama 2'den beri orijinali `SOLARA_Cars_base.glb`) ve `assets/cars/cars.json`.
 Ölçümler `tools/car_inventory/` betikleriyle modelin kendi üçgenlerinden yapıldı.
 Görseller:
 * `docs/car_inventory_cutaway.png`: her araba yandan, tavanı ve camları kesilmiş, üstten.
