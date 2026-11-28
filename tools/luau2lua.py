@@ -122,7 +122,11 @@ def convert(src):
         line = _local_type(line)
         m = re.match(r"^(\s*)([\w\.\[\]\"]+)\s*([+\-*/])=\s*(.+)$", line)
         if m:
-            line = f"{m.group(1)}{m.group(2)} = {m.group(2)} {m.group(3)} ({m.group(4)})"
+            rhs, comment = m.group(4), ""
+            c = re.search(r"\s--(?![\[=]*\[).*$", rhs)  # trailing line comment stays outside the parentheses
+            if c and rhs.count('"', 0, c.start()) % 2 == 0:
+                rhs, comment = rhs[:c.start()], " " + rhs[c.start():].strip()
+            line = f"{m.group(1)}{m.group(2)} = {m.group(2)} {m.group(3)} ({rhs}){comment}"
         m = re.match(r"(\s*for [\w, ]+ in )(\{[^}]*\}|[\w\.\[\]:]+(\(\))?)( do.*)$", line)
         if m and not m.group(2).startswith(("pairs", "ipairs")):
             line = m.group(1) + "pairs(" + m.group(2) + ")" + m.group(4)

@@ -377,26 +377,93 @@ local function carStep(dt: number)
 end
 
 -- ===== Binme / inme =====
+-- İniş adımlarının her biri ayrı korunur: biri hata verse bile (araç parçaları o an yok olmuş, kamera, mobil düzen…)
+-- kalanlar çalışır. Eskiden ilk hatada iniş yarıda kalıyordu: araç tuşları bağlı, karakter kontrolleri kapalı,
+-- mobilde joystick gizli → karakter hareket etmiyordu, oyundan çıkıp girmek gerekiyordu.
+local function safe(label: string, fn: () -> ())
+	local ok, err = pcall(fn)
+	if not ok then
+		Log.Warn("Araçtan inerken '" .. label .. "' hata verdi:", err)
+	end
+end
+
+local EXIT_MAX_SPEED = 18 -- stud/sn: hızla inince karakter bu yatay hızın üstünde savrulmasın
+
+local function inVehicleSeat(humanoid: Humanoid?): Seat?
+	local seat = humanoid and humanoid.SeatPart
+	if seat and seat:IsA("Seat") and seat:GetAttribute("VehicleSeat") then
+		return seat
+	end
+	return nil
+end
+
+-- Yaya kontrollerini geri ver (iniş, güvenlik ağı). Hepsi tekrar çağrılabilir (zararsız).
+local function restoreOnFoot()
+	safe("araç tuşları", function()
+		controllers.InputController:SetContext("Vehicle", false)
+	end)
+	safe("mobil düzen", function()
+		controllers.MobileControlsController:SetLayout("OnFoot")
+	end)
+	safe("karakter kontrolleri", function()
+		setDefaultControls(true)
+	end)
+	ProximityPromptService.Enabled = true
+	stickX, triggerR, triggerL = 0, 0, 0
+	-- Karakter "oturuyor" durumunda kaldıysa (koltuk kaynağı sunucuda silindi ama durum bu cihazda) kaldır
+	safe("karakter durumu", function()
+		local humanoid = controllers.CharacterController:GetHumanoid()
+		if humanoid and humanoid.Health > 0 and humanoid.SeatPart == nil then
+			if humanoid.Sit then
+				humanoid.Sit = false
+			end
+			if humanoid:GetState() == Enum.HumanoidStateType.Seated then
+				humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+			end
+		end
+	end)
+end
+
+-- Hızla inişte karakter aracın hızıyla savrulmasın (karakterin fiziği bu cihazda)
+local function calmCharacter()
+	local root = controllers.CharacterController:GetRootPart()
+	if not root then
+		return
+	end
+	local v = root.AssemblyLinearVelocity
+	local flat = Vector3.new(v.X, 0, v.Z)
+	if flat.Magnitude > EXIT_MAX_SPEED then
+		flat = flat.Unit * EXIT_MAX_SPEED
+		root.AssemblyLinearVelocity = Vector3.new(flat.X, math.min(v.Y, 10), flat.Z)
+	end
+end
+
 local function leave()
 	local c = current
 	if not c then
 		return
 	end
+	current = nil -- önce: hata olsa da araç durumu kalmasın
 	if c.Car then
-		c.Car:Release() -- yerinde tut, kuvvetleri sıfırla, lastikleri normale döndür (sunucu devralana kadar)
+		safe("araç fiziği", function()
+			c.Car:Release() -- yerinde tut, kuvvetleri sıfırla, lastikleri normale döndür (sunucu devralana kadar)
+		end)
 	end
-	current = nil
-	maid:Clean()
-	local camera = controllers.CameraController
-	camera:Release("Vehicle")
-	camera:SetFollowSubject(nil, nil, true) -- araç kamerasından karaktere yumuşak geçiş
-	camera:SetAutoFollowHeading(false)
-	camera:SnapBehindCharacter(true)
-	controllers.InputController:SetContext("Vehicle", false)
-	controllers.MobileControlsController:SetLayout("OnFoot")
-	setDefaultControls(true)
-	ProximityPromptService.Enabled = true
-	stickX, triggerR, triggerL = 0, 0, 0
+	safe("bağlantılar", function()
+		maid:Clean()
+	end)
+	safe("kamera", function()
+		local camera = controllers.CameraController
+		camera:Release("Vehicle")
+		camera:SetFollowSubject(nil, nil, true) -- araç kamerasından karaktere yumuşak geçiş
+		camera:SetAutoFollowHeading(false)
+		camera:SnapBehindCharacter(true)
+	end)
+	restoreOnFoot()
+	safe("savrulma", calmCharacter)
+	task.defer(function() -- sunucu karakteri aracın yanına taşıdıktan sonra bir kez daha
+		safe("savrulma", calmCharacter)
+	end)
 	VehicleController.Exited:Fire()
 end
 
@@ -583,6 +650,49 @@ function VehicleController:Start()
 	controllers.CharacterController.CharacterChanged:Connect(watchCharacter)
 	if controllers.CharacterController:GetCharacter() then
 		task.spawn(watchCharacter, controllers.CharacterController:GetCharacter())
+	end
+
+	-- Güvenlik ağı (0.5 sn'de bir, çok ucuz): koltuk olayı kaçırılır ya da iniş yarıda kalırsa düzeltir.
+	--   araç koltuğunda değil ama araç durumu açık → in;  araç durumu yok ama araç tuşları / mobil araç düzeni
+	--   kalmış → yaya kontrollerini geri ver;  araç koltuğunda ama araç durumu yok → bin.
+	local sinceCheck = 0
+	RunService.Heartbeat:Connect(function(dt)
+		sinceCheck += dt
+		if sinceCheck < 0.5 then
+			return
+		end
+		sinceCheck = 0
+		VehicleController._watchdog()
+	end)
+end
+
+function VehicleController._watchdog()
+	local humanoid = controllers.CharacterController:GetHumanoid()
+	if not humanoid or humanoid.Health <= 0 then
+		return -- ölüm / yeniden doğma kendi yolundan temizler
+	end
+	if controllers.InputController:IsContextActive("Menu") then
+		return -- menü açıkken kontroller menüye ait (kapanınca menü geri verir)
+	end
+	local seat = inVehicleSeat(humanoid)
+	if seat then
+		if not current or current.Seat ~= seat then
+			enter(seat)
+		end
+		return
+	end
+	if current then
+		Log.Warn("Araç koltuğunda değil ama araç durumu açık kalmıştı: yaya kontrollerine dönülüyor")
+		leave()
+		return
+	end
+	local layout = controllers.MobileControlsController:GetLayout()
+	local stuck = controllers.InputController:IsContextActive("Vehicle")
+		or layout == "Car" or layout == "Motorcycle" or layout == "Passenger"
+		or (humanoid.SeatPart == nil and humanoid:GetState() == Enum.HumanoidStateType.Seated)
+	if stuck then
+		Log.Warn("Araçtan inişte kontroller takılı kalmıştı: düzeltiliyor")
+		restoreOnFoot()
 	end
 end
 

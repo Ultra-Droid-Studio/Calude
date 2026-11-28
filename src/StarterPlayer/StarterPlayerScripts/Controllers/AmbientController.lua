@@ -1086,7 +1086,9 @@ local function hijack(carModel: Model)
 			table.insert(wrecks, { Model = carModel, Ped = false, Until = os.clock() + 10, Phase = "Wreck" })
 		end
 	end
-	if controls then
+	-- Yaya kontrolleri sadece hâlâ yayaysak geri açılır; araca oturduysak kontroller VehicleController'ındır
+	-- (açmak sürüşte zıplama tuşunu koltuktan atar hâle getirirdi)
+	if controls and humanoid.SeatPart == nil then
 		controls:Enable()
 	end
 	hijacking = false

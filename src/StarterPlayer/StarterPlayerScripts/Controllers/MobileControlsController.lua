@@ -477,14 +477,20 @@ local function applyRobloxTouchControls()
 end
 
 local function refreshVisibility()
-	local isTouch = controllers.InputController:IsTouch()
-	if isTouch and not screenGui then
-		build()
-	end
-	if screenGui then
-		screenGui.Enabled = isTouch and layoutName ~= "Hidden"
-		applyLayoutVisibility()
-		layout()
+	-- düzen hesabı hata verse bile Roblox joystick'i doğru açılıp kapansın (yoksa yaya hâlde joystick gizli kalır)
+	local ok, err = pcall(function()
+		local isTouch = controllers.InputController:IsTouch()
+		if isTouch and not screenGui then
+			build()
+		end
+		if screenGui then
+			screenGui.Enabled = isTouch and layoutName ~= "Hidden"
+			applyLayoutVisibility()
+			layout()
+		end
+	end)
+	if not ok then
+		Log.Warn("Mobil düzen güncellenemedi:", err)
 	end
 	applyRobloxTouchControls()
 end
