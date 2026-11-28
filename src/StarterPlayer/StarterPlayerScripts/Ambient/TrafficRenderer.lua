@@ -65,6 +65,35 @@ local function part(model: Model, root: BasePart, name: string, size: Vector3, o
 	return p
 end
 
+-- Araç çalma (Şehir: NPC aracı çal): sürücü koltuğu (yayanın kalça noktası, araca göre; yüz −Z) ve sürücü kapısının
+-- önü (oyuncunun duracağı yer, yolda) köke eklenir; kapı noktasında "Çal" istemi (F). İstemi AmbientController açar.
+local function addDriverLayout(root: BasePart, def, width: number, roofTop: number, minSeat: number)
+	local driver = def.Seats[1]
+	local seatX = math.clamp(driver.X * width / def.Width, -width / 2 + 0.9, 0)
+	-- oturan yetişkinin (kalçadan baş üstüne ~3 stud) başı tavanın altında; alçak spor arabada koltuk tabana iner
+	-- (sürücü bacaklarını öne uzatır: PedRenderer.SitIn alçak koltukta o pozu seçer)
+	local seatY = math.max(math.min(roofTop - 3.2, minSeat + 1.2), 0.75)
+	local seat = Instance.new("Attachment")
+	seat.Name = "DriverSeat"
+	seat.CFrame = CFrame.new(seatX, seatY, driver.Z)
+	seat.Parent = root
+	local door = Instance.new("Attachment")
+	door.Name = "DoorPoint"
+	door.CFrame = CFrame.new(-(width / 2 + 1.7), 0, driver.Z)
+	door.Parent = root
+	local prompt = Instance.new("ProximityPrompt")
+	prompt.Name = "HijackPrompt"
+	prompt.ActionText = "Çal"
+	prompt.ObjectText = "Araç"
+	prompt.KeyboardKeyCode = Enum.KeyCode.F
+	prompt.GamepadKeyCode = Enum.KeyCode.ButtonY
+	prompt.HoldDuration = 0.2
+	prompt.MaxActivationDistance = 8
+	prompt.RequiresLineOfSight = false
+	prompt.Enabled = false
+	prompt.Parent = door
+end
+
 local function build(defId: string): Model
 	local def = VehicleDefinitions.Get(defId)
 	local W, L = def.Width, def.Length
@@ -99,6 +128,7 @@ local function build(defId: string): Model
 		part(model, root, "Head", Vector3.new(1.2, 0.5, 0.2), CFrame.new(sx * (W / 2 - 1), clearance + lowerH * 0.65, -L / 2 - 0.05), HEAD_OFF, Enum.Material.SmoothPlastic)
 		part(model, root, "Tail", Vector3.new(1.2, 0.5, 0.2), CFrame.new(sx * (W / 2 - 1), clearance + lowerH * 0.65, L / 2 + 0.05), TAIL_OFF, Enum.Material.SmoothPlastic)
 	end
+	addDriverLayout(root, def, W, clearance + lowerH + cabinH, clearance + lowerH * 0.5)
 	model:SetAttribute("DefId", defId)
 	model:SetAttribute("Painted", true)
 	model:SetAttribute("Brake", false)
@@ -153,6 +183,7 @@ local function buildMesh(defId: string, name: string): Model?
 		Frame = root.CFrame * CFrame.new(0, radius, 0), Scale = s, Parent = model, Body = root, Shadows = true,
 	})
 	meshData[model] = { Name = name, Parts = result.Parts, Spin = result.Spin, Radius = radius, Angle = 0 }
+	addDriverLayout(root, def, info.Width * s, radius + info.RoofY * s, radius + 0.4)
 	model:SetAttribute("DefId", defId)
 	model:SetAttribute("Brake", false)
 	model:SetAttribute("Lights", false)
@@ -164,10 +195,13 @@ local function paint(model: Model)
 	local mesh = meshData[model]
 	if mesh then
 		-- bazen modelin kendi rengi (CarModelConfig.OriginalPaintChance), çoğunlukla aracın renk listesinden
-		CarModelKit.Repaint(mesh.Parts, mesh.Name, CarModelKit.RandomPaint(def.Colors, rng))
+		local color = CarModelKit.RandomPaint(def.Colors, rng)
+		CarModelKit.Repaint(mesh.Parts, mesh.Name, color)
+		model:SetAttribute("Paint", color) -- nil: modelin kendi rengi (çalınınca aynı renk)
 		return
 	end
 	local color = def.Colors[rng:NextInteger(1, #def.Colors)]
+	model:SetAttribute("Paint", color)
 	for _, name in { "Body", "Roof" } do
 		local p = model:FindFirstChild(name) :: BasePart?
 		if p then
@@ -241,6 +275,14 @@ end
 -- Havuza geri ver (kaza sonrası fizikseldiyse tekrar sabitle)
 function TrafficRenderer.Release(model: Model)
 	local root = model.PrimaryPart
+	local prompt = TrafficRenderer.HijackPrompt(model)
+	if prompt then
+		prompt.Enabled = false
+	end
+	if model:GetAttribute("Ghost") then
+		model:SetAttribute("Ghost", nil)
+		TrafficRenderer.Ghost(model, false)
+	end
 	if root then
 		root.Anchored = true
 		root.AssemblyLinearVelocity = Vector3.zero
@@ -259,8 +301,48 @@ function TrafficRenderer.MakePhysical(model: Model, velocity: Vector3)
 	if not root then
 		return
 	end
+	local prompt = TrafficRenderer.HijackPrompt(model)
+	if prompt then
+		prompt.Enabled = false
+	end
 	root.Anchored = false
 	root.AssemblyLinearVelocity = velocity
+end
+
+-- Araç çalma bilgisi: sürücü koltuğu ve kapı önü (köke göre), tanım, model adı (kutu araçta nil), boya (nil: modelin
+-- kendi rengi)
+function TrafficRenderer.HijackInfo(model: Model): (CFrame?, Vector3?, string?, string?, Color3?)
+	local root = model.PrimaryPart
+	local seat = root and root:FindFirstChild("DriverSeat")
+	local door = root and root:FindFirstChild("DoorPoint")
+	if not seat or not door then
+		return nil
+	end
+	local mesh = meshData[model]
+	local paint = model:GetAttribute("Paint")
+	return (seat :: Attachment).CFrame, (door :: Attachment).Position, model:GetAttribute("DefId"),
+		if mesh then mesh.Name else nil, if typeof(paint) == "Color3" then paint else nil
+end
+
+-- Hayalet: çalınırken NPC görseli çarpışmaz (sunucudaki gerçek araç aynı yerde belirir). false: eski hâline döner
+function TrafficRenderer.Ghost(model: Model, ghost: boolean)
+	for _, p in model:GetDescendants() do
+		if p:IsA("BasePart") then
+			local own = p:GetAttribute("NpcCollide")
+			if own == nil then
+				own = p.CanCollide
+				p:SetAttribute("NpcCollide", own)
+			end
+			p.CanCollide = (not ghost) and own == true
+		end
+	end
+end
+
+function TrafficRenderer.HijackPrompt(model: Model): ProximityPrompt?
+	local root = model.PrimaryPart
+	local door = root and root:FindFirstChild("DoorPoint")
+	local prompt = door and door:FindFirstChild("HijackPrompt")
+	return if prompt and prompt:IsA("ProximityPrompt") then prompt else nil
 end
 
 -- Kazadaki aracın durumu: hız (stud/sn), dik mi (devrilmemiş), konum, burun yönü (yatay)

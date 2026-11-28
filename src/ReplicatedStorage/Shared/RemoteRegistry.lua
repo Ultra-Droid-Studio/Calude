@@ -25,6 +25,9 @@ RemoteRegistry.Definitions = {
 		RequestExit = { Class = "RemoteEvent", Direction = "C2S" }, -- araçtan in
 		DriveState = { Class = "RemoteEvent", Direction = "C2S" }, -- far/sinyal/fren/korna durumu (sadece sürücü)
 		RequestFlip = { Class = "RemoteEvent", Direction = "C2S" }, -- ters dönen aracı düzelt
+		-- NPC trafikteki aracı çal: (tanım, model adı, boya Color3 | nil = modelin kendi rengi, kök CFrame)
+		RequestHijack = { Class = "RemoteEvent", Direction = "C2S" },
+		HijackResult = { Class = "RemoteEvent", Direction = "S2C" }, -- (başarılı mı, neden)
 	},
 	NPCRemotes = {},
 	ShopRemotes = {},

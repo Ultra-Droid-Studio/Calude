@@ -16,6 +16,8 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local RemoteRegistry = require(Shared.RemoteRegistry)
 local MapDefinitions = require(Shared.MapDefinitions)
 local VehicleDefinitions = require(Shared.VehicleDefinitions)
+local AmbientConfig = require(ReplicatedStorage.Modules.AmbientConfig)
+local CarModelConfig = require(ReplicatedStorage.Modules.CarModelConfig)
 local RateLimiter = require(Shared.Utilities.RateLimiter)
 local Signal = require(Shared.Utilities.Signal)
 local Log = require(Shared.Utilities.Log).new("VehicleService")
@@ -38,6 +40,10 @@ local enterLimiter = RateLimiter.new(3, 1)
 local exitLimiter = RateLimiter.new(3, 1)
 local stateLimiter = RateLimiter.new(20, 15)
 local flipLimiter = RateLimiter.new(1, 0.33)
+local hijackLimiter = RateLimiter.new(1, 0.25) -- 4 sn'de bir araç çalma isteği
+
+local HIJACK_MAX_DISTANCE = 16 -- oyuncu, çalınan aracın bu kadar yakınında olmalı
+local STOLEN_IDLE = 180 -- sn: boş bırakılan çalıntı araç, oyunculardan uzaksa kaldırılır
 
 local ACTIVATE_RADIUS = 220 -- bu mesafede oyuncu varsa park aracı fiziğe açılır
 local FREEZE_RADIUS = 320 -- herkes bu mesafeden uzaksa sabitlenir
@@ -418,6 +424,84 @@ function VehicleService:GetRecordForPlayer(player: Player)
 	return nil
 end
 
+-- NPC trafikteki aracı çal: istemci kendi trafiğindeki aracın tanımını, modelini, boyasını ve yerini gönderir;
+-- sunucu doğrular, aynı araç olarak (sürülebilir, herkes görür) yere oturtup oyuncuyu sürücü koltuğuna koyar.
+-- Oyuncunun önceki boş çalıntı aracı kaldırılır (oyuncu başına bir çalıntı araç).
+local hijackKinds: { [string]: boolean }? = nil
+function VehicleService:Hijack(player: Player, defId: any, bodyModel: any, paint: any, cframe: any): (boolean, string)
+	if type(defId) ~= "string" or typeof(cframe) ~= "CFrame" then
+		return false, "Geçersiz istek"
+	end
+	if bodyModel ~= nil and type(bodyModel) ~= "string" then
+		return false, "Geçersiz istek"
+	end
+	if paint ~= nil and typeof(paint) ~= "Color3" then
+		return false, "Geçersiz istek"
+	end
+	local kinds = hijackKinds
+	if not kinds then
+		kinds = {}
+		for _, k in AmbientConfig.Traffic.Kinds do
+			kinds[k.Id] = true
+		end
+		hijackKinds = kinds
+	end
+	local def = VehicleDefinitions.Get(defId)
+	if not def or not kinds[defId] or def.Type ~= "Car" then
+		return false, "Bu araç çalınamaz"
+	end
+	if bodyModel then
+		local allowed = false
+		local names = CarModelConfig.ByDefinition[defId] or {}
+		for _, name in names do
+			allowed = allowed or name == bodyModel
+		end
+		local variants = CarModelConfig.TrafficVariants[defId] or {}
+		for _, variant in variants do
+			allowed = allowed or variant.Model == bodyModel
+		end
+		if not allowed then
+			return false, "Bu araç çalınamaz"
+		end
+	end
+	local character = player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	local root = getRoot(player)
+	if not humanoid or not root or humanoid.Health <= 0 or humanoid.SeatPart ~= nil then
+		return false, "Şu an olmaz"
+	end
+	local position = cframe.Position
+	if (root.Position - position).Magnitude > HIJACK_MAX_DISTANCE or math.abs(root.Position.Y - position.Y) > 10 then
+		return false, "Araç çok uzakta"
+	end
+	-- önceki boş çalıntı araç gitsin
+	for model, record in records do
+		if record.StolenBy == player and not next(record.Occupants) then
+			model:Destroy()
+		end
+	end
+	local look = cframe.LookVector
+	local yaw = math.deg(math.atan2(-look.X, -look.Z))
+	local record = self:SpawnAtGround(defId, position.X, position.Z, yaw, {
+		BodyModel = bodyModel, Color = paint, OwnPaint = paint == nil, Seed = math.random(1, 1e6),
+	})
+	if not record then
+		return false, "Araç oluşturulamadı"
+	end
+	record.Spot = nil -- park yeri yok: geri ışınlanmaz
+	record.StolenBy = player
+	record.Model:SetAttribute("Stolen", true)
+	local seat = record.Model:FindFirstChild("DriverSeat")
+	if not seat or not seat:IsA("Seat") then
+		record.Model:Destroy()
+		return false, "Koltuk yok"
+	end
+	setAnchored(record, false)
+	seat:Sit(humanoid)
+	Log.Info("Araç çalındı:", player.Name, defId, bodyModel or "kutu")
+	return true, ""
+end
+
 function VehicleService:ResetToSpot(record)
 	if not record.Spot or next(record.Occupants) then
 		return
@@ -574,6 +658,22 @@ function VehicleService:Start()
 		applyLights(record)
 	end)
 
+	local hijackRemote = RemoteRegistry.Get("VehicleRemotes", "RequestHijack") :: RemoteEvent
+	local hijackResult = RemoteRegistry.Get("VehicleRemotes", "HijackResult") :: RemoteEvent
+	hijackRemote.OnServerEvent:Connect(function(player, defId, bodyModel, paint, cframe)
+		if not hijackLimiter:Check(player) then
+			hijackResult:FireClient(player, false, "Biraz bekle")
+			return
+		end
+		local ok, okOrErr, reason = pcall(VehicleService.Hijack, VehicleService, player, defId, bodyModel, paint, cframe)
+		if not ok then
+			Log.Warn("Araç çalma hatası:", okOrErr)
+			hijackResult:FireClient(player, false, "Hata")
+			return
+		end
+		hijackResult:FireClient(player, okOrErr, reason)
+	end)
+
 	flipRemote.OnServerEvent:Connect(function(player)
 		if not flipLimiter:Check(player) then
 			return
@@ -680,6 +780,10 @@ function VehicleService:Start()
 				if record.Spot and now - record.LastActive > RESPAWN_IDLE and distance > 260
 					and (chassis.Position - record.Spot.Position).Magnitude > 25 then
 					VehicleService:ResetToSpot(record)
+				end
+				-- terk edilmiş çalıntı araç (park yeri yok): oyunculardan uzaksa kaldır
+				if record.StolenBy and now - record.LastActive > STOLEN_IDLE and distance > 200 then
+					model:Destroy()
 				end
 			end
 		end

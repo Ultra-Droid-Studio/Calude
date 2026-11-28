@@ -295,6 +295,9 @@ end
 
 function PedRenderer.Release(model: Model)
 	local rig = rigOf[model]
+	if rig and (rig :: any).Seated then
+		PedRenderer.LeaveSeat(model)
+	end
 	if rig and rig.Mesh then
 		PedMeshRig.Reset(rig)
 	elseif rig and (rig :: any).Rag then
@@ -396,6 +399,64 @@ function PedRenderer.SetFade(model: Model, fade: number)
 		end
 	end
 	rig.Face.Transparency = fade
+end
+
+-- ===================== NPC sürücü =====================
+-- Trafikteki aracın sürücüsü: yaya oturma pozunda, kalça noktası aracın DriverSeat noktasında, araç köküne kaynaklı
+-- (araçla birlikte gider; kazada araçla savrulur). Eller direksiyona uzanır.
+local SIT = {
+	RootX = 0, RootY = 0, RootYaw = 0, RootRoll = 0, WaistPitch = -0.06, WaistYaw = 0, NeckPitch = 0.05, NeckYaw = 0,
+	LHip = 1.45, LKnee = 1.4, LAnkle = 0.25, RHip = 1.45, RKnee = 1.4, RAnkle = 0.25,
+	LShoulder = 0.8, LShoulderRoll = 0.12, RShoulder = 0.8, RShoulderRoll = -0.12, LElbow = 0.75, RElbow = 0.75,
+}
+
+-- Alçak koltuk (spor araba): bacaklar öne uzanır, sırt hafif yaslanır
+local SIT_LOW = table.clone(SIT)
+SIT_LOW.LHip, SIT_LOW.RHip = 1.5, 1.5
+SIT_LOW.LKnee, SIT_LOW.RKnee = 0.4, 0.4
+SIT_LOW.LAnkle, SIT_LOW.RAnkle = 0.5, 0.5
+SIT_LOW.WaistPitch = -0.22
+SIT_LOW.NeckPitch = 0.15
+SIT_LOW.LShoulder, SIT_LOW.RShoulder = 0.95, 0.95
+
+-- seat: kalça noktası, araç köküne göre (kök yol yüzeyinde); seat.Y < 1.6 → alçak koltuk pozu
+function PedRenderer.SitIn(model: Model, carRoot: BasePart, seat: CFrame)
+	local rig = rigOf[model] :: any
+	local root = model.PrimaryPart
+	if not rig or not root then
+		return
+	end
+	PedRenderer.Pose(model, if seat.Position.Y < 1.6 then SIT_LOW else SIT)
+	PedRenderer.SetFade(model, 0)
+	local old = root:FindFirstChild("SeatWeld")
+	if old then
+		old:Destroy()
+	end
+	root.Anchored = true
+	root.CFrame = carRoot.CFrame * seat
+	root.Anchored = false
+	local weld = Instance.new("WeldConstraint")
+	weld.Name = "SeatWeld"
+	weld.Part0 = carRoot
+	weld.Part1 = root
+	weld.Parent = root
+	rig.Seated = true
+end
+
+-- Araçtan ayır (kök yeniden sabit, oturma pozu kalkar)
+function PedRenderer.LeaveSeat(model: Model)
+	local rig = rigOf[model] :: any
+	local root = model.PrimaryPart
+	if not rig or not root then
+		return
+	end
+	local weld = root:FindFirstChild("SeatWeld")
+	if weld then
+		weld:Destroy()
+	end
+	root.Anchored = true
+	rig.Seated = nil
+	PedRenderer.Neutral(model)
 end
 
 -- ===================== Kaza: ragdoll, kalkma =====================

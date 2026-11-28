@@ -182,6 +182,7 @@ function typeof(v)
   return type(v)
 end
 TAGS = {}
+table.clone = table.clone or function(t) local c = {}; for k, v in pairs(t) do c[k] = v end; return c end
 math.clamp = math.clamp or function(x, a, b) if x < a then return a elseif x > b then return b end return x end
 CFrame.identity = CFrame.new()
 function CFrame.fromAxisAngle(axis, ang)

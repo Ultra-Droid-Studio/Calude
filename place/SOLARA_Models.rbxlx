@@ -11134,6 +11134,9 @@ RemoteRegistry.Definitions = {
 		RequestExit = { Class = "RemoteEvent", Direction = "C2S" }, -- araçtan in
 		DriveState = { Class = "RemoteEvent", Direction = "C2S" }, -- far/sinyal/fren/korna durumu (sadece sürücü)
 		RequestFlip = { Class = "RemoteEvent", Direction = "C2S" }, -- ters dönen aracı düzelt
+		-- NPC trafikteki aracı çal: (tanım, model adı, boya Color3 | nil = modelin kendi rengi, kök CFrame)
+		RequestHijack = { Class = "RemoteEvent", Direction = "C2S" },
+		HijackResult = { Class = "RemoteEvent", Direction = "S2C" }, -- (başarılı mı, neden)
 	},
 	NPCRemotes = {},
 	ShopRemotes = {},
@@ -17831,6 +17834,8 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local RemoteRegistry = require(Shared.RemoteRegistry)
 local MapDefinitions = require(Shared.MapDefinitions)
 local VehicleDefinitions = require(Shared.VehicleDefinitions)
+local AmbientConfig = require(ReplicatedStorage.Modules.AmbientConfig)
+local CarModelConfig = require(ReplicatedStorage.Modules.CarModelConfig)
 local RateLimiter = require(Shared.Utilities.RateLimiter)
 local Signal = require(Shared.Utilities.Signal)
 local Log = require(Shared.Utilities.Log).new("VehicleService")
@@ -17853,6 +17858,10 @@ local enterLimiter = RateLimiter.new(3, 1)
 local exitLimiter = RateLimiter.new(3, 1)
 local stateLimiter = RateLimiter.new(20, 15)
 local flipLimiter = RateLimiter.new(1, 0.33)
+local hijackLimiter = RateLimiter.new(1, 0.25) -- 4 sn'de bir araç çalma isteği
+
+local HIJACK_MAX_DISTANCE = 16 -- oyuncu, çalınan aracın bu kadar yakınında olmalı
+local STOLEN_IDLE = 180 -- sn: boş bırakılan çalıntı araç, oyunculardan uzaksa kaldırılır
 
 local ACTIVATE_RADIUS = 220 -- bu mesafede oyuncu varsa park aracı fiziğe açılır
 local FREEZE_RADIUS = 320 -- herkes bu mesafeden uzaksa sabitlenir
@@ -18233,6 +18242,84 @@ function VehicleService:GetRecordForPlayer(player: Player)
 	return nil
 end
 
+-- NPC trafikteki aracı çal: istemci kendi trafiğindeki aracın tanımını, modelini, boyasını ve yerini gönderir;
+-- sunucu doğrular, aynı araç olarak (sürülebilir, herkes görür) yere oturtup oyuncuyu sürücü koltuğuna koyar.
+-- Oyuncunun önceki boş çalıntı aracı kaldırılır (oyuncu başına bir çalıntı araç).
+local hijackKinds: { [string]: boolean }? = nil
+function VehicleService:Hijack(player: Player, defId: any, bodyModel: any, paint: any, cframe: any): (boolean, string)
+	if type(defId) ~= "string" or typeof(cframe) ~= "CFrame" then
+		return false, "Geçersiz istek"
+	end
+	if bodyModel ~= nil and type(bodyModel) ~= "string" then
+		return false, "Geçersiz istek"
+	end
+	if paint ~= nil and typeof(paint) ~= "Color3" then
+		return false, "Geçersiz istek"
+	end
+	local kinds = hijackKinds
+	if not kinds then
+		kinds = {}
+		for _, k in AmbientConfig.Traffic.Kinds do
+			kinds[k.Id] = true
+		end
+		hijackKinds = kinds
+	end
+	local def = VehicleDefinitions.Get(defId)
+	if not def or not kinds[defId] or def.Type ~= "Car" then
+		return false, "Bu araç çalınamaz"
+	end
+	if bodyModel then
+		local allowed = false
+		local names = CarModelConfig.ByDefinition[defId] or {}
+		for _, name in names do
+			allowed = allowed or name == bodyModel
+		end
+		local variants = CarModelConfig.TrafficVariants[defId] or {}
+		for _, variant in variants do
+			allowed = allowed or variant.Model == bodyModel
+		end
+		if not allowed then
+			return false, "Bu araç çalınamaz"
+		end
+	end
+	local character = player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	local root = getRoot(player)
+	if not humanoid or not root or humanoid.Health <= 0 or humanoid.SeatPart ~= nil then
+		return false, "Şu an olmaz"
+	end
+	local position = cframe.Position
+	if (root.Position - position).Magnitude > HIJACK_MAX_DISTANCE or math.abs(root.Position.Y - position.Y) > 10 then
+		return false, "Araç çok uzakta"
+	end
+	-- önceki boş çalıntı araç gitsin
+	for model, record in records do
+		if record.StolenBy == player and not next(record.Occupants) then
+			model:Destroy()
+		end
+	end
+	local look = cframe.LookVector
+	local yaw = math.deg(math.atan2(-look.X, -look.Z))
+	local record = self:SpawnAtGround(defId, position.X, position.Z, yaw, {
+		BodyModel = bodyModel, Color = paint, OwnPaint = paint == nil, Seed = math.random(1, 1e6),
+	})
+	if not record then
+		return false, "Araç oluşturulamadı"
+	end
+	record.Spot = nil -- park yeri yok: geri ışınlanmaz
+	record.StolenBy = player
+	record.Model:SetAttribute("Stolen", true)
+	local seat = record.Model:FindFirstChild("DriverSeat")
+	if not seat or not seat:IsA("Seat") then
+		record.Model:Destroy()
+		return false, "Koltuk yok"
+	end
+	setAnchored(record, false)
+	seat:Sit(humanoid)
+	Log.Info("Araç çalındı:", player.Name, defId, bodyModel or "kutu")
+	return true, ""
+end
+
 function VehicleService:ResetToSpot(record)
 	if not record.Spot or next(record.Occupants) then
 		return
@@ -18389,6 +18476,22 @@ function VehicleService:Start()
 		applyLights(record)
 	end)
 
+	local hijackRemote = RemoteRegistry.Get("VehicleRemotes", "RequestHijack") :: RemoteEvent
+	local hijackResult = RemoteRegistry.Get("VehicleRemotes", "HijackResult") :: RemoteEvent
+	hijackRemote.OnServerEvent:Connect(function(player, defId, bodyModel, paint, cframe)
+		if not hijackLimiter:Check(player) then
+			hijackResult:FireClient(player, false, "Biraz bekle")
+			return
+		end
+		local ok, okOrErr, reason = pcall(VehicleService.Hijack, VehicleService, player, defId, bodyModel, paint, cframe)
+		if not ok then
+			Log.Warn("Araç çalma hatası:", okOrErr)
+			hijackResult:FireClient(player, false, "Hata")
+			return
+		end
+		hijackResult:FireClient(player, okOrErr, reason)
+	end)
+
 	flipRemote.OnServerEvent:Connect(function(player)
 		if not flipLimiter:Check(player) then
 			return
@@ -18495,6 +18598,10 @@ function VehicleService:Start()
 				if record.Spot and now - record.LastActive > RESPAWN_IDLE and distance > 260
 					and (chassis.Position - record.Spot.Position).Magnitude > 25 then
 					VehicleService:ResetToSpot(record)
+				end
+				-- terk edilmiş çalıntı araç (park yeri yok): oyunculardan uzaksa kaldır
+				if record.StolenBy and now - record.LastActive > STOLEN_IDLE and distance > 200 then
+					model:Destroy()
 				end
 			end
 		end
@@ -19534,7 +19641,7 @@ end
 -- kaynakları aynen kalır, görünmez olur. Model fizikteki dingil mesafesine ölçeklenir; görünür tekerlekler modelin kendi
 -- oranındadır ve yere değecek kadar alçakta durur (fizik tekerleği modelinkinden büyük). Teker görselleri mafsala
 -- Motor6D ile bağlıdır: direksiyon ve süspansiyonla hareket eder, dönüşü istemci oynatır (VehicleVisualsController).
-local function dressWithModel(ctx: Ctx, name: string, colorGiven: boolean): boolean
+local function dressWithModel(ctx: Ctx, name: string, colorGiven: boolean, ownPaint: boolean): boolean
 	local info = CarModelKit.Get(name)
 	if not info then
 		return false
@@ -19565,7 +19672,7 @@ local function dressWithModel(ctx: Ctx, name: string, colorGiven: boolean): bool
 	local drop = math.max(d.WheelRadius - visualRadius, 0)
 	local frame = chassis.CFrame * CFrame.new(0, ctx.yW - drop, 0)
 	-- renk verilmediyse bazen modelin kendi rengi (CarModelConfig.OriginalPaintChance)
-	local paint = if colorGiven then ctx.Color else CarModelKit.RandomPaint({ ctx.Color }, ctx.Rng)
+	local paint = if ownPaint then nil elseif colorGiven then ctx.Color else CarModelKit.RandomPaint({ ctx.Color }, ctx.Rng)
 	CarModelKit.Build(info, { Frame = frame, Scale = s, Parent = model, Body = chassis, Wheels = knuckles, Paint = paint })
 	-- Koltuk: oturan karakterin başı (~3.4 stud) tavanın altında kalsın
 	local roof = ctx.yW - drop + info.RoofY * s
@@ -19579,7 +19686,9 @@ local function newVehicleId(): string
 	return string.sub(HttpService:GenerateGUID(false), 1, 8)
 end
 
-function VehicleFactory.Build(defId: string, cframe: CFrame, options: { Color: Color3?, Seed: number? }?): Model?
+-- options: Color (gövde rengi), Seed, BodyModel (CarModelConfig model adı: rastgele seçim yerine bu; ör. trafikten
+-- çalınan aracın modeli), OwnPaint (true: modelin kendi rengi)
+function VehicleFactory.Build(defId: string, cframe: CFrame, options: { Color: Color3?, Seed: number?, BodyModel: string?, OwnPaint: boolean? }?): Model?
 	local def = VehicleDefinitions.Get(defId)
 	if not def then
 		warn("[VehicleFactory] Bilinmeyen araç:", defId)
@@ -19665,9 +19774,9 @@ function VehicleFactory.Build(defId: string, cframe: CFrame, options: { Color: C
 		buildWheel(ctx, "RR", hx, hz, false, rearDriven, true)
 		local styleFn = CarStyles[def.Style] or CarStyles.sedan
 		styleFn(ctx)
-		local bodyModel = CarModelKit.Pick(defId, rng, false)
+		local bodyModel = if opts.BodyModel and CarModelKit.Get(opts.BodyModel) then opts.BodyModel else CarModelKit.Pick(defId, rng, false)
 		if bodyModel then
-			dressWithModel(ctx, bodyModel, opts.Color ~= nil)
+			dressWithModel(ctx, bodyModel, opts.Color ~= nil, opts.OwnPaint == true)
 		end
 		wheels = { "FL", "FR", "RL", "RR" }
 		-- direksiyon simidi + IK el hedefleri
@@ -28619,6 +28728,8 @@ local Workspace = game:GetService("Workspace")
 local Lighting = game:GetService("Lighting")
 local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ProximityPromptService = game:GetService("ProximityPromptService")
+local StarterGui = game:GetService("StarterGui")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local AmbientShared = Shared:WaitForChild("Ambient")
@@ -28632,6 +28743,7 @@ local MapDefinitions = require(Shared:WaitForChild("MapDefinitions"))
 local VehicleDefinitions = require(Shared:WaitForChild("VehicleDefinitions"))
 local AmbientConfig = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("AmbientConfig"))
 local Log = require(Shared.Utilities.Log).new("Ambient")
+local RemoteRegistry = require(Shared.RemoteRegistry)
 
 local AmbientFolder = script.Parent.Parent:WaitForChild("Ambient")
 local TrafficRenderer = require(AmbientFolder:WaitForChild("TrafficRenderer"))
@@ -28651,6 +28763,27 @@ local graph, pedGraph, traffic, peds
 local ready = false
 local vehicleModels: { [any]: Model } = {}
 local pedModels: { [any]: Model } = {}
+
+-- ===== NPC sürücüler (araç çalma) =====
+-- Yakındaki NPC araçlarda sürücü koltuğunda oturan bir yaya (uzaktakilerde yok: maliyet). F → aracı çal.
+local DRIVER_RADIUS = 70
+local MAX_DRIVERS = 12
+local drivers: { [Model]: Model } = {} -- NPC araç modeli → sürücü (yaya modeli)
+local hijacking = false
+
+local function detachDriver(carModel: Model)
+	local d = drivers[carModel]
+	if d then
+		drivers[carModel] = nil
+		PedRenderer.Release(d) -- koltuktan ayırır, havuza döner
+	end
+end
+
+-- NPC araç modelini havuza ver (sürücüsü de)
+local function releaseCar(model: Model)
+	detachDriver(model)
+	TrafficRenderer.Release(model)
+end
 -- Kaza modelleri: yaya (ragdoll → kalkma → yürümeye devam) ya da araç (fizik → toparlanma → trafiğe dönüş).
 -- Geri dönemeyenler (devrilmiş araç, yol bulamayan yaya) eskisi gibi oyuncu uzaklaşınca havuza döner.
 local wrecks: { any } = {}
@@ -28898,7 +29031,7 @@ local function syncModels()
 		local model = vehicleModels[v]
 		if model then
 			vehicleModels[v] = nil
-			TrafficRenderer.Release(model)
+			releaseCar(model)
 		end
 	end
 	for _, p in peds.Spawned do
@@ -28931,7 +29064,7 @@ local function clearAll()
 		if w.Ped then
 			PedRenderer.Release(w.Model)
 		else
-			TrafficRenderer.Release(w.Model)
+			releaseCar(w.Model)
 		end
 	end
 	wrecks = {}
@@ -29082,7 +29215,7 @@ local function cleanWrecks(focus: Vector3)
 			if w.Ped then
 				PedRenderer.Release(w.Model)
 			else
-				TrafficRenderer.Release(w.Model)
+				releaseCar(w.Model)
 			end
 			table.remove(wrecks, i)
 		end
@@ -29130,6 +29263,47 @@ local function statsText(focus: Vector3, time: number, hour: number, tDensity: n
 	end
 	table.insert(lines, "F7: kapat")
 	return table.concat(lines, "\n")
+end
+
+-- Sürücüleri yakındaki araçlara oturt / uzaklaşınca kaldır; "Çal" istemini aç/kapa (10 Hz)
+local function updateDrivers()
+	local camera = Workspace.CurrentCamera
+	if not camera then
+		return
+	end
+	local camPos = camera.CFrame.Position
+	local count = 0
+	for _ in drivers do
+		count += 1
+	end
+	for _, model in vehicleModels do
+		local root = model.PrimaryPart
+		if root then
+			local d = (root.Position - camPos).Magnitude
+			if drivers[model] then
+				if d > DRIVER_RADIUS + 15 then
+					detachDriver(model)
+					count -= 1
+				end
+			elseif d < DRIVER_RADIUS and count < MAX_DRIVERS then
+				local seat = TrafficRenderer.HijackInfo(model)
+				if seat then
+					local ped = PedRenderer.Acquire()
+					PedRenderer.SitIn(ped, root, seat)
+					drivers[model] = ped
+					count += 1
+				end
+			end
+		end
+	end
+	local humanoid = controllers.CharacterController:GetHumanoid()
+	local onFoot = humanoid ~= nil and humanoid.SeatPart == nil and humanoid.Health > 0 and not hijacking
+	for v, model in vehicleModels do
+		local prompt = TrafficRenderer.HijackPrompt(model)
+		if prompt then
+			prompt.Enabled = onFoot and drivers[model] ~= nil and (v.V or 0) < 14
+		end
+	end
 end
 
 local function simStep()
@@ -29192,6 +29366,7 @@ local function simStep()
 		SignalRenderer.Update(graph, focus, time, 320)
 	end
 	DoorRenderer.Update(focus, peds.Time) -- yakındaki kapılar (havuzlu), yaya giriş/çıkışında açılır
+	updateDrivers()
 	if debugOn and now - lastDebug > AmbientConfig.Debug.RefreshInterval then
 		lastDebug = now
 		AmbientDebug.Update({
@@ -29309,6 +29484,153 @@ local function render(dt: number, alpha: number)
 	end
 end
 
+-- ===== Araç çalma: kapıya yürü → kolu uzat → sürücüyü dışarı çekip it → sunucu aynı aracı sürülebilir yapar, bizi
+-- sürücü koltuğuna oturtur → NPC görseli kalkar. Sürücü ragdoll olur, kalkıp kaldırımdan yürüyüp gider. =====
+local function notify(text: string)
+	pcall(function()
+		StarterGui:SetCore("SendNotification", { Title = "SOLARA", Text = text, Duration = 3 })
+	end)
+end
+
+local function playerControls()
+	local ok, controls = pcall(function()
+		return require(player:WaitForChild("PlayerScripts"):WaitForChild("PlayerModule") :: any):GetControls()
+	end)
+	return if ok then controls else nil
+end
+
+-- Oyuncunun sağ kolunu kapıya uzat (R15; animasyonun üstüne eklenir)
+local function reachArm(character: Model, seconds: number)
+	local upper = character:FindFirstChild("RightUpperArm")
+	local motor = upper and upper:FindFirstChild("RightShoulder")
+	if not motor or not motor:IsA("Motor6D") then
+		task.wait(seconds)
+		return
+	end
+	local t0 = os.clock()
+	local conn = RunService.Stepped:Connect(function()
+		local t = math.clamp((os.clock() - t0) / seconds, 0, 1)
+		local lift = math.sin(t * math.pi) * 1.35 -- kalkar, geri iner
+		motor.Transform = motor.Transform * CFrame.Angles(lift, 0, 0)
+	end)
+	task.wait(seconds)
+	conn:Disconnect()
+end
+
+local hijackRemote: RemoteEvent? = nil
+local hijackResult: RemoteEvent? = nil
+
+local function hijack(carModel: Model)
+	if hijacking or not traffic then
+		return
+	end
+	local v = nil
+	for sv, m in vehicleModels do
+		if m == carModel then
+			v = sv
+			break
+		end
+	end
+	local character = player.Character
+	local humanoid = controllers.CharacterController:GetHumanoid()
+	local root = controllers.CharacterController:GetRootPart()
+	local carRoot = carModel.PrimaryPart
+	if not v or not character or not humanoid or not root or not carRoot or humanoid.SeatPart or humanoid.Health <= 0 then
+		return
+	end
+	local seat, doorLocal, defId, bodyName, paint = TrafficRenderer.HijackInfo(carModel)
+	if not seat or not doorLocal or not defId or not hijackRemote or not hijackResult then
+		return
+	end
+	hijacking = true
+	-- araç trafikten çıkar, olduğu yerde durur (fren lambası yanar)
+	vehicleModels[v] = nil
+	traffic:Remove(v, "Çalındı")
+	TrafficRenderer.SetBrake(carModel, true)
+	local prompt = TrafficRenderer.HijackPrompt(carModel)
+	if prompt then
+		prompt.Enabled = false
+	end
+	local controls = playerControls()
+	if controls then
+		controls:Disable()
+	end
+	local done = false
+	local ok, err = pcall(function()
+		local carCF = carRoot.CFrame
+		local door = carCF * doorLocal
+		local seatWorld = carCF * seat
+		-- 1) kapıya yürü
+		humanoid:MoveTo(Vector3.new(door.X, root.Position.Y, door.Z))
+		local t0 = os.clock()
+		while os.clock() - t0 < 1.6 do
+			if Vector3.new(root.Position.X - door.X, 0, root.Position.Z - door.Z).Magnitude < 1.3 then
+				break
+			end
+			task.wait()
+		end
+		-- 2) araca dön, kolu kapıya uzat
+		root.CFrame = CFrame.lookAt(root.Position, Vector3.new(seatWorld.Position.X, root.Position.Y, seatWorld.Position.Z))
+		reachArm(character, 0.45)
+		-- 3) sürücüyü dışarı çek ve it: ragdoll olur, sonra kalkıp yürüyüp gider
+		local driver = drivers[carModel]
+		if driver then
+			drivers[carModel] = nil
+			PedRenderer.LeaveSeat(driver)
+			local right = carCF.RightVector
+			local out = Vector3.new(-right.X, 0, -right.Z).Unit -- sürücü kapısı solda
+			local back = Vector3.new(carCF.LookVector.X, 0, carCF.LookVector.Z).Unit * -1
+			local spot = door + back * 1.6
+			PedRenderer.Place(driver, spot, out.X, out.Z)
+			PedRenderer.Knockdown(driver, out * 15 + back * 4 + Vector3.new(0, 8, 0))
+			table.insert(wrecks, {
+				Model = driver, Ped = true, Until = os.clock() + 8, Phase = "Down", Seed = math.random(), Speed = 4.4,
+				HX = out.X, HZ = out.Z,
+			})
+		end
+		task.wait(0.3)
+		-- 4) sunucu: aynı aracı (model, renk, yer) sürülebilir olarak oluşturur ve bizi oturtur
+		TrafficRenderer.Ghost(carModel, true)
+		carModel:SetAttribute("Ghost", true)
+		local result, reason = nil, nil
+		local conn = (hijackResult :: RemoteEvent).OnClientEvent:Connect(function(success, why)
+			result, reason = success, why
+		end)
+		;(hijackRemote :: RemoteEvent):FireServer(defId, bodyName, paint, carCF)
+		local t1 = os.clock()
+		while result == nil and os.clock() - t1 < 5 do
+			task.wait()
+		end
+		conn:Disconnect()
+		if result then
+			local t2 = os.clock()
+			while humanoid.SeatPart == nil and os.clock() - t2 < 2 do
+				task.wait()
+			end
+		end
+		if result and humanoid.SeatPart then
+			releaseCar(carModel) -- sunucudaki gerçek araç yerine geçti
+		else
+			-- olmadı: NPC araç orada park etmiş gibi kalır (uzaklaşınca kaldırılır)
+			carModel:SetAttribute("Ghost", nil)
+			TrafficRenderer.Ghost(carModel, false)
+			table.insert(wrecks, { Model = carModel, Ped = false, Until = os.clock() + 10, Phase = "Wreck" })
+			notify(if type(reason) == "string" and reason ~= "" then reason else "Araç çalınamadı")
+		end
+		done = true
+	end)
+	if not ok then
+		Log.Warn("Araç çalma hatası:", err)
+		if not done and carModel.Parent then
+			table.insert(wrecks, { Model = carModel, Ped = false, Until = os.clock() + 10, Phase = "Wreck" })
+		end
+	end
+	if controls then
+		controls:Enable()
+	end
+	hijacking = false
+end
+
 local function onHeartbeat(dt: number)
 	local run = shouldRun()
 	if not run then
@@ -29391,6 +29713,19 @@ function AmbientController:Start()
 		end
 	end)
 	RunService.Heartbeat:Connect(onHeartbeat)
+	task.spawn(function()
+		hijackRemote = RemoteRegistry.Get("VehicleRemotes", "RequestHijack") :: RemoteEvent
+		hijackResult = RemoteRegistry.Get("VehicleRemotes", "HijackResult") :: RemoteEvent
+	end)
+	ProximityPromptService.PromptTriggered:Connect(function(prompt)
+		if prompt.Name ~= "HijackPrompt" then
+			return
+		end
+		local model = prompt:FindFirstAncestorOfClass("Model")
+		if model then
+			task.spawn(hijack, model)
+		end
+	end)
 	controllers.InputController.ActionBegan:Connect(function(action: string)
 		if action == "AmbientDebug" then
 			debugOn = not debugOn
@@ -35552,6 +35887,9 @@ end
 
 function PedRenderer.Release(model: Model)
 	local rig = rigOf[model]
+	if rig and (rig :: any).Seated then
+		PedRenderer.LeaveSeat(model)
+	end
 	if rig and rig.Mesh then
 		PedMeshRig.Reset(rig)
 	elseif rig and (rig :: any).Rag then
@@ -35653,6 +35991,64 @@ function PedRenderer.SetFade(model: Model, fade: number)
 		end
 	end
 	rig.Face.Transparency = fade
+end
+
+-- ===================== NPC sürücü =====================
+-- Trafikteki aracın sürücüsü: yaya oturma pozunda, kalça noktası aracın DriverSeat noktasında, araç köküne kaynaklı
+-- (araçla birlikte gider; kazada araçla savrulur). Eller direksiyona uzanır.
+local SIT = {
+	RootX = 0, RootY = 0, RootYaw = 0, RootRoll = 0, WaistPitch = -0.06, WaistYaw = 0, NeckPitch = 0.05, NeckYaw = 0,
+	LHip = 1.45, LKnee = 1.4, LAnkle = 0.25, RHip = 1.45, RKnee = 1.4, RAnkle = 0.25,
+	LShoulder = 0.8, LShoulderRoll = 0.12, RShoulder = 0.8, RShoulderRoll = -0.12, LElbow = 0.75, RElbow = 0.75,
+}
+
+-- Alçak koltuk (spor araba): bacaklar öne uzanır, sırt hafif yaslanır
+local SIT_LOW = table.clone(SIT)
+SIT_LOW.LHip, SIT_LOW.RHip = 1.5, 1.5
+SIT_LOW.LKnee, SIT_LOW.RKnee = 0.4, 0.4
+SIT_LOW.LAnkle, SIT_LOW.RAnkle = 0.5, 0.5
+SIT_LOW.WaistPitch = -0.22
+SIT_LOW.NeckPitch = 0.15
+SIT_LOW.LShoulder, SIT_LOW.RShoulder = 0.95, 0.95
+
+-- seat: kalça noktası, araç köküne göre (kök yol yüzeyinde); seat.Y < 1.6 → alçak koltuk pozu
+function PedRenderer.SitIn(model: Model, carRoot: BasePart, seat: CFrame)
+	local rig = rigOf[model] :: any
+	local root = model.PrimaryPart
+	if not rig or not root then
+		return
+	end
+	PedRenderer.Pose(model, if seat.Position.Y < 1.6 then SIT_LOW else SIT)
+	PedRenderer.SetFade(model, 0)
+	local old = root:FindFirstChild("SeatWeld")
+	if old then
+		old:Destroy()
+	end
+	root.Anchored = true
+	root.CFrame = carRoot.CFrame * seat
+	root.Anchored = false
+	local weld = Instance.new("WeldConstraint")
+	weld.Name = "SeatWeld"
+	weld.Part0 = carRoot
+	weld.Part1 = root
+	weld.Parent = root
+	rig.Seated = true
+end
+
+-- Araçtan ayır (kök yeniden sabit, oturma pozu kalkar)
+function PedRenderer.LeaveSeat(model: Model)
+	local rig = rigOf[model] :: any
+	local root = model.PrimaryPart
+	if not rig or not root then
+		return
+	end
+	local weld = root:FindFirstChild("SeatWeld")
+	if weld then
+		weld:Destroy()
+	end
+	root.Anchored = true
+	rig.Seated = nil
+	PedRenderer.Neutral(model)
 end
 
 -- ===================== Kaza: ragdoll, kalkma =====================
@@ -36229,6 +36625,35 @@ local function part(model: Model, root: BasePart, name: string, size: Vector3, o
 	return p
 end
 
+-- Araç çalma (Şehir: NPC aracı çal): sürücü koltuğu (yayanın kalça noktası, araca göre; yüz −Z) ve sürücü kapısının
+-- önü (oyuncunun duracağı yer, yolda) köke eklenir; kapı noktasında "Çal" istemi (F). İstemi AmbientController açar.
+local function addDriverLayout(root: BasePart, def, width: number, roofTop: number, minSeat: number)
+	local driver = def.Seats[1]
+	local seatX = math.clamp(driver.X * width / def.Width, -width / 2 + 0.9, 0)
+	-- oturan yetişkinin (kalçadan baş üstüne ~3 stud) başı tavanın altında; alçak spor arabada koltuk tabana iner
+	-- (sürücü bacaklarını öne uzatır: PedRenderer.SitIn alçak koltukta o pozu seçer)
+	local seatY = math.max(math.min(roofTop - 3.2, minSeat + 1.2), 0.75)
+	local seat = Instance.new("Attachment")
+	seat.Name = "DriverSeat"
+	seat.CFrame = CFrame.new(seatX, seatY, driver.Z)
+	seat.Parent = root
+	local door = Instance.new("Attachment")
+	door.Name = "DoorPoint"
+	door.CFrame = CFrame.new(-(width / 2 + 1.7), 0, driver.Z)
+	door.Parent = root
+	local prompt = Instance.new("ProximityPrompt")
+	prompt.Name = "HijackPrompt"
+	prompt.ActionText = "Çal"
+	prompt.ObjectText = "Araç"
+	prompt.KeyboardKeyCode = Enum.KeyCode.F
+	prompt.GamepadKeyCode = Enum.KeyCode.ButtonY
+	prompt.HoldDuration = 0.2
+	prompt.MaxActivationDistance = 8
+	prompt.RequiresLineOfSight = false
+	prompt.Enabled = false
+	prompt.Parent = door
+end
+
 local function build(defId: string): Model
 	local def = VehicleDefinitions.Get(defId)
 	local W, L = def.Width, def.Length
@@ -36263,6 +36688,7 @@ local function build(defId: string): Model
 		part(model, root, "Head", Vector3.new(1.2, 0.5, 0.2), CFrame.new(sx * (W / 2 - 1), clearance + lowerH * 0.65, -L / 2 - 0.05), HEAD_OFF, Enum.Material.SmoothPlastic)
 		part(model, root, "Tail", Vector3.new(1.2, 0.5, 0.2), CFrame.new(sx * (W / 2 - 1), clearance + lowerH * 0.65, L / 2 + 0.05), TAIL_OFF, Enum.Material.SmoothPlastic)
 	end
+	addDriverLayout(root, def, W, clearance + lowerH + cabinH, clearance + lowerH * 0.5)
 	model:SetAttribute("DefId", defId)
 	model:SetAttribute("Painted", true)
 	model:SetAttribute("Brake", false)
@@ -36317,6 +36743,7 @@ local function buildMesh(defId: string, name: string): Model?
 		Frame = root.CFrame * CFrame.new(0, radius, 0), Scale = s, Parent = model, Body = root, Shadows = true,
 	})
 	meshData[model] = { Name = name, Parts = result.Parts, Spin = result.Spin, Radius = radius, Angle = 0 }
+	addDriverLayout(root, def, info.Width * s, radius + info.RoofY * s, radius + 0.4)
 	model:SetAttribute("DefId", defId)
 	model:SetAttribute("Brake", false)
 	model:SetAttribute("Lights", false)
@@ -36328,10 +36755,13 @@ local function paint(model: Model)
 	local mesh = meshData[model]
 	if mesh then
 		-- bazen modelin kendi rengi (CarModelConfig.OriginalPaintChance), çoğunlukla aracın renk listesinden
-		CarModelKit.Repaint(mesh.Parts, mesh.Name, CarModelKit.RandomPaint(def.Colors, rng))
+		local color = CarModelKit.RandomPaint(def.Colors, rng)
+		CarModelKit.Repaint(mesh.Parts, mesh.Name, color)
+		model:SetAttribute("Paint", color) -- nil: modelin kendi rengi (çalınınca aynı renk)
 		return
 	end
 	local color = def.Colors[rng:NextInteger(1, #def.Colors)]
+	model:SetAttribute("Paint", color)
 	for _, name in { "Body", "Roof" } do
 		local p = model:FindFirstChild(name) :: BasePart?
 		if p then
@@ -36405,6 +36835,14 @@ end
 -- Havuza geri ver (kaza sonrası fizikseldiyse tekrar sabitle)
 function TrafficRenderer.Release(model: Model)
 	local root = model.PrimaryPart
+	local prompt = TrafficRenderer.HijackPrompt(model)
+	if prompt then
+		prompt.Enabled = false
+	end
+	if model:GetAttribute("Ghost") then
+		model:SetAttribute("Ghost", nil)
+		TrafficRenderer.Ghost(model, false)
+	end
 	if root then
 		root.Anchored = true
 		root.AssemblyLinearVelocity = Vector3.zero
@@ -36423,8 +36861,48 @@ function TrafficRenderer.MakePhysical(model: Model, velocity: Vector3)
 	if not root then
 		return
 	end
+	local prompt = TrafficRenderer.HijackPrompt(model)
+	if prompt then
+		prompt.Enabled = false
+	end
 	root.Anchored = false
 	root.AssemblyLinearVelocity = velocity
+end
+
+-- Araç çalma bilgisi: sürücü koltuğu ve kapı önü (köke göre), tanım, model adı (kutu araçta nil), boya (nil: modelin
+-- kendi rengi)
+function TrafficRenderer.HijackInfo(model: Model): (CFrame?, Vector3?, string?, string?, Color3?)
+	local root = model.PrimaryPart
+	local seat = root and root:FindFirstChild("DriverSeat")
+	local door = root and root:FindFirstChild("DoorPoint")
+	if not seat or not door then
+		return nil
+	end
+	local mesh = meshData[model]
+	local paint = model:GetAttribute("Paint")
+	return (seat :: Attachment).CFrame, (door :: Attachment).Position, model:GetAttribute("DefId"),
+		if mesh then mesh.Name else nil, if typeof(paint) == "Color3" then paint else nil
+end
+
+-- Hayalet: çalınırken NPC görseli çarpışmaz (sunucudaki gerçek araç aynı yerde belirir). false: eski hâline döner
+function TrafficRenderer.Ghost(model: Model, ghost: boolean)
+	for _, p in model:GetDescendants() do
+		if p:IsA("BasePart") then
+			local own = p:GetAttribute("NpcCollide")
+			if own == nil then
+				own = p.CanCollide
+				p:SetAttribute("NpcCollide", own)
+			end
+			p.CanCollide = (not ghost) and own == true
+		end
+	end
+end
+
+function TrafficRenderer.HijackPrompt(model: Model): ProximityPrompt?
+	local root = model.PrimaryPart
+	local door = root and root:FindFirstChild("DoorPoint")
+	local prompt = door and door:FindFirstChild("HijackPrompt")
+	return if prompt and prompt:IsA("ProximityPrompt") then prompt else nil
 end
 
 -- Kazadaki aracın durumu: hız (stud/sn), dik mi (devrilmemiş), konum, burun yönü (yatay)

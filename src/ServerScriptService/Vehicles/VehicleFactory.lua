@@ -420,7 +420,7 @@ end
 -- kaynakları aynen kalır, görünmez olur. Model fizikteki dingil mesafesine ölçeklenir; görünür tekerlekler modelin kendi
 -- oranındadır ve yere değecek kadar alçakta durur (fizik tekerleği modelinkinden büyük). Teker görselleri mafsala
 -- Motor6D ile bağlıdır: direksiyon ve süspansiyonla hareket eder, dönüşü istemci oynatır (VehicleVisualsController).
-local function dressWithModel(ctx: Ctx, name: string, colorGiven: boolean): boolean
+local function dressWithModel(ctx: Ctx, name: string, colorGiven: boolean, ownPaint: boolean): boolean
 	local info = CarModelKit.Get(name)
 	if not info then
 		return false
@@ -451,7 +451,7 @@ local function dressWithModel(ctx: Ctx, name: string, colorGiven: boolean): bool
 	local drop = math.max(d.WheelRadius - visualRadius, 0)
 	local frame = chassis.CFrame * CFrame.new(0, ctx.yW - drop, 0)
 	-- renk verilmediyse bazen modelin kendi rengi (CarModelConfig.OriginalPaintChance)
-	local paint = if colorGiven then ctx.Color else CarModelKit.RandomPaint({ ctx.Color }, ctx.Rng)
+	local paint = if ownPaint then nil elseif colorGiven then ctx.Color else CarModelKit.RandomPaint({ ctx.Color }, ctx.Rng)
 	CarModelKit.Build(info, { Frame = frame, Scale = s, Parent = model, Body = chassis, Wheels = knuckles, Paint = paint })
 	-- Koltuk: oturan karakterin başı (~3.4 stud) tavanın altında kalsın
 	local roof = ctx.yW - drop + info.RoofY * s
@@ -465,7 +465,9 @@ local function newVehicleId(): string
 	return string.sub(HttpService:GenerateGUID(false), 1, 8)
 end
 
-function VehicleFactory.Build(defId: string, cframe: CFrame, options: { Color: Color3?, Seed: number? }?): Model?
+-- options: Color (gövde rengi), Seed, BodyModel (CarModelConfig model adı: rastgele seçim yerine bu; ör. trafikten
+-- çalınan aracın modeli), OwnPaint (true: modelin kendi rengi)
+function VehicleFactory.Build(defId: string, cframe: CFrame, options: { Color: Color3?, Seed: number?, BodyModel: string?, OwnPaint: boolean? }?): Model?
 	local def = VehicleDefinitions.Get(defId)
 	if not def then
 		warn("[VehicleFactory] Bilinmeyen araç:", defId)
@@ -551,9 +553,9 @@ function VehicleFactory.Build(defId: string, cframe: CFrame, options: { Color: C
 		buildWheel(ctx, "RR", hx, hz, false, rearDriven, true)
 		local styleFn = CarStyles[def.Style] or CarStyles.sedan
 		styleFn(ctx)
-		local bodyModel = CarModelKit.Pick(defId, rng, false)
+		local bodyModel = if opts.BodyModel and CarModelKit.Get(opts.BodyModel) then opts.BodyModel else CarModelKit.Pick(defId, rng, false)
 		if bodyModel then
-			dressWithModel(ctx, bodyModel, opts.Color ~= nil)
+			dressWithModel(ctx, bodyModel, opts.Color ~= nil, opts.OwnPaint == true)
 		end
 		wheels = { "FL", "FR", "RL", "RR" }
 		-- direksiyon simidi + IK el hedefleri
